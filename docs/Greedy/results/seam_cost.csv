@@ -1,0 +1,5 @@
+image,energy,greedy_cost,dp_cost,gc_cost,greedy_over_optimal
+tower,backward,7494,2446,2446,3.0638
+tower,forward,586,12,12,48.8333
+synthetic,backward,344,328,328,1.0488
+synthetic,forward,0,0,0,1.0000

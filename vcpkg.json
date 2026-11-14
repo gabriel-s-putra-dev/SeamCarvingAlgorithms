@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "seam-carving-algorithms",
+  "version-string": "1.0",
+  "description": "Seam carving (DP, Greedy, Graph Cut). CMake installs these dependencies automatically through vcpkg.",
+  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489",
+  "dependencies": [
+    {
+      "name": "opencv4",
+      "default-features": false,
+      "features": ["fs", "intrinsics", "jpeg", "png", "thread"]
+    }
+  ]
+}

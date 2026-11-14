@@ -14,18 +14,28 @@ library resizing, graph or flow functions are used.
 
 ## Quick start
 
+From the repository root. CMake installs OpenCV itself through vcpkg on the first
+configure (needs git; the first run builds OpenCV once, later runs are cached).
+
 ```bash
-# from the repository root, OpenCV 4 installed
-g++ -std=c++14 -O2 -I. tests/GraphCuttingTests.cpp     GraphCutting.cpp -o gc_tests `pkg-config --cflags --libs opencv4`
-g++ -std=c++14 -O2 -I. tests/GraphCuttingBenchmark.cpp GraphCutting.cpp -o gc_bench `pkg-config --cflags --libs opencv4`
-./gc_tests                          # 2060 checks passed, 0 failed
-./gc_bench                          # writes docs/GraphCutting/results/ (~2 min)
+# Windows (any shell, Visual Studio 2022 installed)
+cmake --preset vs2022
+cmake --build --preset vs2022-release --target gc_tests gc_bench
+out\build\vs2022\Release\gc_tests.exe     # 2060 checks passed, 0 failed
+out\build\vs2022\Release\gc_bench.exe     # writes docs/GraphCutting/results/ (~2 min)
+
+# Linux / macOS
+cmake --preset unix-release
+cmake --build --preset unix-release --target gc_tests gc_bench
+./out/build/unix-release/gc_tests
+./out/build/unix-release/gc_bench
+
 python tools/plot_graphcut_timing.py
 ```
 
-Visual Studio: add the `.cpp` files to a project with the usual OpenCV include and
-lib settings, and build in **Release**. The max-flow loop is much slower in Debug
-builds.
+Visual Studio: File > Open > Folder on the repository root, pick a configuration
+(Release), and choose `gc_tests.exe` / `gc_bench.exe` as the start-up item. Build in
+**Release**. The max-flow loop is much slower in Debug builds.
 
 ```cpp
 #include "GraphCutting.h"
