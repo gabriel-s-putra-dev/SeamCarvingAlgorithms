@@ -101,6 +101,10 @@ namespace DP
     // seams (height), the same order as GraphCut::Carve.
     // Throws std::invalid_argument if img is empty or the target is not within
     // 1..original size in both directions (enlarging is not supported).
+    // Seams are recorded into stats->verticalSeams / horizontalSeams only when
+    // recordSeams is true AND stats is not null; recordSeams without stats is
+    // ignored (same behaviour as GraphCut::Carve), so DrawSeams would have
+    // nothing to draw.
     cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight,
                   EnergyType energy = EnergyType::Backward,
                   CarveStats* stats = nullptr, bool recordSeams = false);

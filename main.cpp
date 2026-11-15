@@ -3,6 +3,10 @@
 //   seamcarve <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek> [backward|forward]
 //   seamcarve                     (no arguments: interactive menu)
 //
+// A width or height of 0 (or pressing Enter in the menu) keeps that dimension
+// at its original size, e.g. "seamcarve in.png out.png 194 0 dp" shrinks the
+// width only.
+//
 // Writes the resized image to <output> and the removed seams drawn on the
 // original (red = vertical, green = horizontal) to <output-name>_seams.png.
 // Greedy will be added to the menu once GreedyAlgorithm is implemented.
@@ -91,6 +95,21 @@ static std::string Ask(const std::string& prompt)
     return line;
 }
 
+// Asks for a new width/height in 1..original. Enter or 0 keeps the original.
+static bool AskSize(const char* label, int original, int& out)
+{
+    const std::string range = std::to_string(original);
+    for (;;)
+    {
+        const std::string s = Ask(std::string(label) + " (1-" + range + ", Enter = keep " + range + "): ");
+        if (!std::cin) return false;
+        int v = 0;
+        if (s.empty() || (ParseInt(s, v) && v == 0)) { out = original; return true; }
+        if (ParseInt(s, v) && v >= 1 && v <= original) { out = v; return true; }
+        std::cout << "  enter a number from 1 to " << range << ", or press Enter to keep it\n";
+    }
+}
+
 // Interactive menu; returns false if the user gave up / input ended.
 static bool AskOptions(Options& o, cv::Mat& img)
 {
@@ -105,12 +124,8 @@ static bool AskOptions(Options& o, cv::Mat& img)
     }
     std::cout << "  size: " << img.cols << " x " << img.rows << "\n";
 
-    while (!ParseInt(Ask("New width  (1-" + std::to_string(img.cols) + "): "), o.newWidth)
-           || o.newWidth < 1 || o.newWidth > img.cols)
-        if (!std::cin) return false; else std::cout << "  out of range\n";
-    while (!ParseInt(Ask("New height (1-" + std::to_string(img.rows) + "): "), o.newHeight)
-           || o.newHeight < 1 || o.newHeight > img.rows)
-        if (!std::cin) return false; else std::cout << "  out of range\n";
+    if (!AskSize("New width ", img.cols, o.newWidth)) return false;
+    if (!AskSize("New height", img.rows, o.newHeight)) return false;
 
     std::cout << "Algorithm:\n  1) Dynamic Programming\n  2) Graph Cut (Dinic)\n  3) Graph Cut (Edmonds-Karp)\n";
     while (!ParseAlgorithm(Ask("Choice: "), o.algorithm))
@@ -157,7 +172,8 @@ static RunResult Run(const cv::Mat& img, const Options& o)
 static void PrintUsage(const char* exe)
 {
     std::printf("usage: %s <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek> [backward|forward]\n"
-                "       %s                (interactive menu)\n", exe, exe);
+                "       %s                (interactive menu)\n"
+                "       a width or height of 0 keeps the original size\n", exe, exe);
 }
 
 int main(int argc, char** argv)
@@ -185,11 +201,14 @@ int main(int argc, char** argv)
             std::printf("could not read %s\n", o.input.c_str());
             return 1;
         }
-        if (o.newWidth < 1 || o.newWidth > img.cols || o.newHeight < 1 || o.newHeight > img.rows)
+        if (o.newWidth < 0 || o.newWidth > img.cols || o.newHeight < 0 || o.newHeight > img.rows)
         {
-            std::printf("target size must be between 1x1 and %dx%d (shrinking only)\n", img.cols, img.rows);
+            std::printf("target size must be between 1x1 and %dx%d (shrinking only; 0 = keep)\n",
+                        img.cols, img.rows);
             return 1;
         }
+        if (o.newWidth == 0) o.newWidth = img.cols;     // 0 = keep the original width
+        if (o.newHeight == 0) o.newHeight = img.rows;   // 0 = keep the original height
     }
 
     const int seams = (img.cols - o.newWidth) + (img.rows - o.newHeight);
