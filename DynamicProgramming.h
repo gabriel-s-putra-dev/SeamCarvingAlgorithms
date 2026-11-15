@@ -4,7 +4,8 @@
 //
 // Step (a): energy map.
 // Step (b): DP minimum seam (vertical and horizontal).
-// (Step (c) remove & repeat is not implemented yet.)
+// Step (c): remove the seam, recompute the energy map, repeat until the
+//           image has the requested size (Carve).
 //
 // OpenCV is only used for colour conversion and the Sobel filter; no
 // content-aware resizing function from any library is used.
@@ -67,4 +68,48 @@ namespace DP
     // seam has the wrong length, if any index is outside the image, or if the
     // seam is not connected (consecutive entries differing by more than 1).
     long long SeamEnergy(const cv::Mat& energy, const std::vector<int>& seam, bool vertical);
+
+    // ------------------------------------------------------------------------
+    // (c) Remove the seam and repeat
+    // ------------------------------------------------------------------------
+
+    // Removes one pixel per row: seam[i] is the column removed in row i.
+    // Works for any Mat type (image, energy map, coordinate map, ...).
+    // Throws std::invalid_argument if img is empty or only 1 column wide,
+    // if seam.size() != img.rows, or if any index is outside [0, cols).
+    void RemoveVerticalSeam(cv::Mat& img, const std::vector<int>& seam);
+
+    // Removes one pixel per column: seam[j] is the row removed in column j.
+    // Same rules as RemoveVerticalSeam with rows and columns swapped.
+    void RemoveHorizontalSeam(cv::Mat& img, const std::vector<int>& seam);
+
+    // Carve ADDS to these fields, so use a fresh CarveStats for every run.
+    struct CarveStats
+    {
+        double seamSeconds = 0.0;          // time spent on energy + seam finding
+                                           // (same meaning as GraphCut::CarveStats)
+        long long totalCost = 0;           // sum of the energies of all removed seams
+        std::vector<long long> seamCosts;  // energy of each removed seam, in order
+        // Original-image (x = col, y = row) coordinates of every removed seam,
+        // filled only when recordSeams is true. Used by DrawSeams.
+        std::vector<std::vector<cv::Point>> verticalSeams, horizontalSeams;
+    };
+
+    // Shrinks img to newWidth x newHeight by repeatedly removing the minimum
+    // energy seam. The energy map is recomputed from the current image after
+    // every removal. Vertical seams (width) are removed first, then horizontal
+    // seams (height), the same order as GraphCut::Carve.
+    // Throws std::invalid_argument if img is empty or the target is not within
+    // 1..original size in both directions (enlarging is not supported).
+    // Seams are recorded into stats->verticalSeams / horizontalSeams only when
+    // recordSeams is true AND stats is not null; recordSeams without stats is
+    // ignored (same behaviour as GraphCut::Carve), so DrawSeams would have
+    // nothing to draw.
+    cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight,
+                  EnergyType energy = EnergyType::Backward,
+                  CarveStats* stats = nullptr, bool recordSeams = false);
+
+    // Original image with all recorded seams drawn on it
+    // (red = vertical, green = horizontal). Needs Carve(..., stats, true).
+    cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats);
 }
