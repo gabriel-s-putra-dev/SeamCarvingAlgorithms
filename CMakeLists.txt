@@ -95,6 +95,8 @@ endfunction()
 
 seam_program(seam_carve   main.cpp)
 seam_program(greedy_bench tests/GreedyBenchmark.cpp)
+seam_program(greedy_tests tests/GreedyTests.cpp)
+seam_program(greedy_analysis tests/GreedyAnalysis.cpp)
 seam_program(gc_bench     tests/GraphCuttingBenchmark.cpp)
 seam_program(gc_tests     tests/GraphCuttingTests.cpp)
 seam_program(dp_tests     tests/DynamicProgrammingTests.cpp)
