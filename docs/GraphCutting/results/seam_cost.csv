@@ -1,6 +1,6 @@
 image,method,seam_cost,augmentations,phases
 tower,DP,2446,,
-tower,Greedy,7686,,
+tower,Greedy,7494,,
 tower,GC Dinic,2446,1025,72
 tower,GC Edmonds-Karp,2446,1025,
 synthetic,DP,328,,

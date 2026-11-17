@@ -1,12 +1,14 @@
-// Benchmark + visual comparison for GraphCutting.cpp. Build from the repo root:
-//   g++ -std=c++14 -O2 -I. tests/GraphCuttingBenchmark.cpp GraphCutting.cpp -o gc_bench `pkg-config --cflags --libs opencv4`
+// Benchmark + visual comparison for GraphCutting.cpp. Build from the repo root
+// (CMake target gc_bench), or:
+//   g++ -std=c++14 -O2 -I. tests/GraphCuttingBenchmark.cpp GraphCutting.cpp DynamicProgramming.cpp GreedyAlgorithm.cpp -o gc_bench `pkg-config --cflags --libs opencv4`
 //   ./gc_bench            (writes docs/GraphCutting/results/)
 // Then draw the timing chart:  python tools/plot_graphcut_timing.py
 //
-// DP and Greedy below are small REFERENCE versions so that Graph Cut can be
-// compared on identical cost maps before the team's DynamicProgramming.cpp /
-// GreedyAlgorithm.cpp are ready. Swap them in via the SeamFinder type.
+// DP and Greedy are the TEAM's implementations (DynamicProgramming.cpp,
+// GreedyAlgorithm.cpp), run on the same energy map as Graph Cut.
 #include "GraphCutting.h"
+#include "DynamicProgramming.h"
+#include "GreedyAlgorithm.h"
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
@@ -17,6 +19,7 @@
 #include <cstdio>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace GraphCut;
@@ -27,53 +30,21 @@ struct Seam { std::vector<int> cols; int64_t cost; };
 using SeamFinder = std::function<Seam(const cv::Mat&)>;
 
 // ---------------------------------------------------------------------------
-// Reference finders (vertical seam on a CV_32S cost map)
+// Seam finders (vertical seam on a CV_32S cost map)
 // ---------------------------------------------------------------------------
-static Seam RefDP(const cv::Mat& c)
+// Team DP (DynamicProgramming.cpp) wrapped as a SeamFinder.
+static Seam TeamDP(const cv::Mat& c)
 {
-    const int m = c.rows, n = c.cols;
-    std::vector<int64_t> M(static_cast<size_t>(m) * n);
-    std::vector<int> back(static_cast<size_t>(m) * n, 0);
-    for (int j = 0; j < n; ++j) M[j] = c.at<int>(0, j);
-    for (int i = 1; i < m; ++i)
-    {
-        const int* row = c.ptr<int>(i);
-        for (int j = 0; j < n; ++j)
-        {
-            int best = -1;   // ties -> leftmost
-            for (int k = std::max(j - 1, 0); k <= std::min(j + 1, n - 1); ++k)
-                if (best < 0 || M[(i - 1) * n + k] < M[(i - 1) * n + best]) best = k;
-            M[i * n + j] = row[j] + M[(i - 1) * n + best];
-            back[i * n + j] = best;
-        }
-    }
-    int j = 0;
-    for (int k = 1; k < n; ++k)
-        if (M[(m - 1) * n + k] < M[(m - 1) * n + j]) j = k;
-    Seam s{ std::vector<int>(m), M[(m - 1) * n + j] };
-    for (int i = m - 1; i >= 0; --i) { s.cols[i] = j; j = back[i * n + j]; }
+    Seam s{ DP::FindVerticalSeam(c), 0 };
+    s.cost = DP::SeamEnergy(c, s.cols, true);
     return s;
 }
 
-static Seam RefGreedy(const cv::Mat& c)
+// Team Greedy (GreedyAlgorithm.cpp) wrapped as a SeamFinder.
+static Seam TeamGreedy(const cv::Mat& c)
 {
-    const int m = c.rows, n = c.cols;
-    Seam s{ std::vector<int>(m), 0 };
-    int j = 0;
-    for (int k = 1; k < n; ++k)
-        if (c.at<int>(0, k) < c.at<int>(0, j)) j = k;
-    s.cols[0] = j;
-    s.cost = c.at<int>(0, j);
-    for (int i = 1; i < m; ++i)
-    {
-        int best = std::max(j - 1, 0);
-        for (int k = best + 1; k <= std::min(j + 1, n - 1); ++k)
-            if (c.at<int>(i, k) < c.at<int>(i, best)) best = k;
-        j = best;
-        s.cols[i] = j;
-        s.cost += c.at<int>(i, j);
-    }
-    return s;
+    Greedy::SeamResult r = Greedy::FindVerticalSeam(c);
+    return Seam{ std::move(r.seam), r.cost };
 }
 
 static SeamFinder GC(MaxFlowAlgorithm algo)
@@ -94,8 +65,8 @@ static void SingleSeamTiming(const cv::Mat& img)
 {
     struct M { const char* name; SeamFinder f; int maxWidth; int reps; };
     const std::vector<M> methods = {
-        { "DP", RefDP, 100000, 5 },
-        { "Greedy", RefGreedy, 100000, 5 },
+        { "DP", TeamDP, 100000, 5 },
+        { "Greedy", TeamGreedy, 100000, 5 },
         { "GC Dinic", GC(MaxFlowAlgorithm::Dinic), 100000, 1 },
         { "GC Edmonds-Karp", GC(MaxFlowAlgorithm::EdmondsKarp), 400, 1 },
     };
@@ -126,6 +97,33 @@ static void SingleSeamTiming(const cv::Mat& img)
     std::fclose(f);
 }
 
+// Why graph cut slows down sharply at large sizes: Dinic phase count and
+// time per phase for one vertical seam (results/phase_scaling.csv).
+static void PhaseScaling(const cv::Mat& img)
+{
+    FILE* f = std::fopen((OUT + "phase_scaling.csv").c_str(), "w");
+    std::fprintf(f, "width,height,pixels,arcs,graph_mib,seconds,phases,augmentations,ms_per_phase,seam_cost\n");
+    std::printf("Dinic phase scaling\n");
+    for (int w : { 274, 400, 600, 750, 900 })
+    {
+        const int h = static_cast<int>(std::lround(double(w) * img.rows / img.cols));
+        cv::Mat small;
+        cv::resize(img, small, cv::Size(w, h), 0, 0, cv::INTER_AREA);
+        const cv::Mat cost = ComputeEnergy(small);
+        int64_t s, t;
+        const double mib = BuildSeamGraph(cost, s, t).MemoryBytes() / 1048576.0;
+        const auto t0 = std::chrono::steady_clock::now();
+        const SeamResult r = FindVerticalSeam(cost, MaxFlowAlgorithm::Dinic);
+        const double sec = Seconds(t0);
+        std::fprintf(f, "%d,%d,%d,%lld,%.2f,%.6f,%lld,%lld,%.3f,%lld\n", w, h, w * h, (long long)r.arcs, mib, sec,
+                     (long long)r.phases, (long long)r.augmentations, 1e3 * sec / r.phases, (long long)r.cost);
+        std::printf("  %4dx%-4d arcs=%8lld graph=%6.2f MiB  %8.3f s  phases=%4lld  aug=%5lld  %6.2f ms/phase\n",
+                    w, h, (long long)r.arcs, mib, sec, (long long)r.phases, (long long)r.augmentations,
+                    1e3 * sec / r.phases);
+    }
+    std::fclose(f);
+}
+
 static void MemoryUsage(const cv::Mat& img)
 {
     FILE* f = std::fopen((OUT + "memory_usage.csv").c_str(), "w");
@@ -140,7 +138,11 @@ static void MemoryUsage(const cv::Mat& img)
         const FlowNetwork net = BuildSeamGraph(ComputeEnergy(small), s, t);
         const double px = double(w) * h;
         const size_t gc = net.MemoryBytes();
-        const size_t dp = static_cast<size_t>(px) * (sizeof(int64_t) + sizeof(int));  // M table + back-pointers
+        // Team DP (DynamicProgramming.cpp): one CV_64F cumulative table M, plus the
+        // seam (one int per row). The seam is backtracked through M, so there are
+        // no back-pointers. Counted from the real objects, not from a formula.
+        const cv::Mat M = DP::CumulativeEnergy(ComputeEnergy(small));
+        const size_t dp = M.total() * M.elemSize() + static_cast<size_t>(h) * sizeof(int);
         std::fprintf(f, "%d,%d,%.0f,%lld,%lld,%zu,%.1f,%zu,%.1f\n", w, h, px, (long long)net.NumNodes(),
                      (long long)net.NumArcs(), gc, gc / px, dp, dp / px);
         std::printf("  %4dx%-4d V=%8lld arcs=%9lld  GC %8.2f MiB (%.1f B/px)  DP %6.2f MiB (%.1f B/px)\n", w, h,
@@ -206,7 +208,7 @@ static cv::Mat SideBySide(const std::vector<cv::Mat>& images, int gap = 8)
 static void FullResize(const std::string& name, const cv::Mat& img, int k, FILE* csv)
 {
     struct M { const char* name; SeamFinder f; };
-    const std::vector<M> methods = { { "DP", RefDP }, { "Greedy", RefGreedy },
+    const std::vector<M> methods = { { "DP", TeamDP }, { "Greedy", TeamGreedy },
                                      { "GC Dinic", GC(MaxFlowAlgorithm::Dinic) } };
     std::vector<cv::Mat> results{ Label(img, "original") }, overlays;
     std::vector<std::vector<std::vector<cv::Point>>> allSeams;
@@ -234,8 +236,13 @@ static void FullResize(const std::string& name, const cv::Mat& img, int k, FILE*
     std::printf("  %-10s DP vs GC: %d/%d seams identical\n", name.c_str(), identical, k);
 }
 
-int main()
+// Usage: gc_bench            run every experiment
+//        gc_bench memory     only the counted-memory table (memory_usage.csv);
+//                            these are exact byte counts, not timings, so they
+//                            can be regenerated without re-running the timings
+int main(int argc, char** argv)
 {
+    const bool memoryOnly = argc > 1 && std::string(argv[1]) == "memory";
     const cv::Mat tower = cv::imread("images/tower.png");
     const cv::Mat synthetic = cv::imread("images/synthetic.png");
     if (tower.empty() || synthetic.empty())
@@ -243,10 +250,18 @@ int main()
         std::printf("run from the repo root (images/tower.png, images/synthetic.png)\n");
         return 1;
     }
-    if (FILE* probe = std::fopen((OUT + "single_seam_timing.csv").c_str(), "w")) std::fclose(probe);
+    // Check the results folder is writable. "a" (append) does not truncate, so
+    // "gc_bench memory" leaves the existing timing CSV untouched.
+    if (FILE* probe = std::fopen((OUT + "single_seam_timing.csv").c_str(), "a")) std::fclose(probe);
     else { std::printf("cannot write to %s (create the folder first)\n", OUT.c_str()); return 1; }
 
+    if (memoryOnly)
+    {
+        MemoryUsage(tower);
+        return 0;
+    }
     SingleSeamTiming(tower);
+    PhaseScaling(tower);
     MemoryUsage(tower);
 
     std::printf("First-seam cost\n");
@@ -257,14 +272,14 @@ int main()
         const cv::Mat c = ComputeEnergy(item.second);
         const SeamResult d = FindVerticalSeam(c, MaxFlowAlgorithm::Dinic);
         const SeamResult e = FindVerticalSeam(c, MaxFlowAlgorithm::EdmondsKarp);
-        std::fprintf(f, "%s,DP,%lld,,\n", item.first.c_str(), (long long)RefDP(c).cost);
-        std::fprintf(f, "%s,Greedy,%lld,,\n", item.first.c_str(), (long long)RefGreedy(c).cost);
+        std::fprintf(f, "%s,DP,%lld,,\n", item.first.c_str(), (long long)TeamDP(c).cost);
+        std::fprintf(f, "%s,Greedy,%lld,,\n", item.first.c_str(), (long long)TeamGreedy(c).cost);
         std::fprintf(f, "%s,GC Dinic,%lld,%lld,%lld\n", item.first.c_str(), (long long)d.cost,
                      (long long)d.augmentations, (long long)d.phases);
         std::fprintf(f, "%s,GC Edmonds-Karp,%lld,%lld,\n", item.first.c_str(), (long long)e.cost,
                      (long long)e.augmentations);
         std::printf("  %-10s DP %lld  Greedy %lld  GC %lld (Dinic: %lld aug, %lld phases; EK: %lld aug)\n",
-                    item.first.c_str(), (long long)RefDP(c).cost, (long long)RefGreedy(c).cost,
+                    item.first.c_str(), (long long)TeamDP(c).cost, (long long)TeamGreedy(c).cost,
                     (long long)d.cost, (long long)d.augmentations, (long long)d.phases, (long long)e.augmentations);
     }
     std::fclose(f);
@@ -284,6 +299,11 @@ int main()
                              Label(both, "result 194x150") }));
     std::printf("Both directions 274x186 -> 194x150: %.2f s, total cost %lld\n", st.seamSeconds,
                 (long long)st.totalCost);
+    f = std::fopen((OUT + "both_directions.csv").c_str(), "w");
+    std::fprintf(f, "image,from,to,vertical_seams,horizontal_seams,seconds,total_cost\n");
+    std::fprintf(f, "tower,274x186,194x150,%zu,%zu,%.6f,%lld\n", st.verticalSeams.size(),
+                 st.horizontalSeams.size(), st.seamSeconds, (long long)st.totalCost);
+    std::fclose(f);
     std::printf("done -> %s\n", OUT.c_str());
     return 0;
 }
