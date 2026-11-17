@@ -1,5 +1,8 @@
 # Build output (compiled objects, executables, generated images)
 build/
+out/
+.vs/
+CMakeUserPresets.json
 
 # Personal editor settings (paths differ per machine)
 .vscode/

@@ -1,0 +1,7 @@
+image,method,size,seams_removed,seam_seconds,total_seconds,total_cost
+tower,Greedy,274x186,80,0.048693,0.057220,900958
+tower,DP (ref),274x186,80,0.069342,0.076920,430676
+tower,GC Dinic,274x186,80,22.867966,22.878970,430676
+synthetic,Greedy,180x120,50,0.013891,0.016335,40212
+synthetic,DP (ref),180x120,50,0.015207,0.016994,16400
+synthetic,GC Dinic,180x120,50,0.755799,0.758120,16400

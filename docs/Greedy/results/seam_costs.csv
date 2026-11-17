@@ -1,0 +1,391 @@
+image,method,seam_index,seam_cost
+tower,Greedy,1,7494
+tower,Greedy,2,7260
+tower,Greedy,3,7526
+tower,Greedy,4,7856
+tower,Greedy,5,6738
+tower,Greedy,6,7134
+tower,Greedy,7,6522
+tower,Greedy,8,7172
+tower,Greedy,9,8448
+tower,Greedy,10,7202
+tower,Greedy,11,7354
+tower,Greedy,12,7010
+tower,Greedy,13,7424
+tower,Greedy,14,7784
+tower,Greedy,15,7524
+tower,Greedy,16,6980
+tower,Greedy,17,7438
+tower,Greedy,18,7548
+tower,Greedy,19,7788
+tower,Greedy,20,7818
+tower,Greedy,21,7124
+tower,Greedy,22,8296
+tower,Greedy,23,7500
+tower,Greedy,24,7480
+tower,Greedy,25,7382
+tower,Greedy,26,7792
+tower,Greedy,27,7824
+tower,Greedy,28,8078
+tower,Greedy,29,7920
+tower,Greedy,30,8274
+tower,Greedy,31,8100
+tower,Greedy,32,8004
+tower,Greedy,33,7668
+tower,Greedy,34,7416
+tower,Greedy,35,7244
+tower,Greedy,36,8454
+tower,Greedy,37,7826
+tower,Greedy,38,14862
+tower,Greedy,39,21290
+tower,Greedy,40,17120
+tower,Greedy,41,16542
+tower,Greedy,42,17136
+tower,Greedy,43,18444
+tower,Greedy,44,16084
+tower,Greedy,45,26044
+tower,Greedy,46,13048
+tower,Greedy,47,19842
+tower,Greedy,48,14198
+tower,Greedy,49,14578
+tower,Greedy,50,12354
+tower,Greedy,51,16930
+tower,Greedy,52,18642
+tower,Greedy,53,14318
+tower,Greedy,54,19512
+tower,Greedy,55,13856
+tower,Greedy,56,21986
+tower,Greedy,57,16546
+tower,Greedy,58,14090
+tower,Greedy,59,15094
+tower,Greedy,60,18660
+tower,Greedy,61,26282
+tower,Greedy,62,23294
+tower,Greedy,63,23320
+tower,Greedy,64,18002
+tower,Greedy,65,24042
+tower,Greedy,66,20462
+tower,Greedy,67,20844
+tower,Greedy,68,13202
+tower,Greedy,69,22478
+tower,Greedy,70,4020
+tower,Greedy,71,3058
+tower,Greedy,72,4628
+tower,Greedy,73,3602
+tower,Greedy,74,3036
+tower,Greedy,75,3236
+tower,Greedy,76,3060
+tower,Greedy,77,3244
+tower,Greedy,78,3322
+tower,Greedy,79,2670
+tower,Greedy,80,3578
+tower,DP (ref),1,2446
+tower,DP (ref),2,2600
+tower,DP (ref),3,2732
+tower,DP (ref),4,2876
+tower,DP (ref),5,2924
+tower,DP (ref),6,2992
+tower,DP (ref),7,2938
+tower,DP (ref),8,3064
+tower,DP (ref),9,3016
+tower,DP (ref),10,3080
+tower,DP (ref),11,3234
+tower,DP (ref),12,3246
+tower,DP (ref),13,3088
+tower,DP (ref),14,3260
+tower,DP (ref),15,3214
+tower,DP (ref),16,3430
+tower,DP (ref),17,3400
+tower,DP (ref),18,3482
+tower,DP (ref),19,3730
+tower,DP (ref),20,3776
+tower,DP (ref),21,3912
+tower,DP (ref),22,4044
+tower,DP (ref),23,4232
+tower,DP (ref),24,4908
+tower,DP (ref),25,4952
+tower,DP (ref),26,5124
+tower,DP (ref),27,5222
+tower,DP (ref),28,5280
+tower,DP (ref),29,5356
+tower,DP (ref),30,5414
+tower,DP (ref),31,5440
+tower,DP (ref),32,5466
+tower,DP (ref),33,5510
+tower,DP (ref),34,5536
+tower,DP (ref),35,5660
+tower,DP (ref),36,5688
+tower,DP (ref),37,5712
+tower,DP (ref),38,5724
+tower,DP (ref),39,5760
+tower,DP (ref),40,5864
+tower,DP (ref),41,5930
+tower,DP (ref),42,5958
+tower,DP (ref),43,5930
+tower,DP (ref),44,6104
+tower,DP (ref),45,6166
+tower,DP (ref),46,6168
+tower,DP (ref),47,6170
+tower,DP (ref),48,6266
+tower,DP (ref),49,6222
+tower,DP (ref),50,6374
+tower,DP (ref),51,6392
+tower,DP (ref),52,6392
+tower,DP (ref),53,6326
+tower,DP (ref),54,6440
+tower,DP (ref),55,6448
+tower,DP (ref),56,6480
+tower,DP (ref),57,6402
+tower,DP (ref),58,6544
+tower,DP (ref),59,6446
+tower,DP (ref),60,6610
+tower,DP (ref),61,6542
+tower,DP (ref),62,6500
+tower,DP (ref),63,6592
+tower,DP (ref),64,6646
+tower,DP (ref),65,6682
+tower,DP (ref),66,6588
+tower,DP (ref),67,6674
+tower,DP (ref),68,6810
+tower,DP (ref),69,6848
+tower,DP (ref),70,6880
+tower,DP (ref),71,6942
+tower,DP (ref),72,7010
+tower,DP (ref),73,6994
+tower,DP (ref),74,7048
+tower,DP (ref),75,7010
+tower,DP (ref),76,7036
+tower,DP (ref),77,7132
+tower,DP (ref),78,7232
+tower,DP (ref),79,7184
+tower,DP (ref),80,7226
+tower,GC Dinic,1,2446
+tower,GC Dinic,2,2600
+tower,GC Dinic,3,2732
+tower,GC Dinic,4,2876
+tower,GC Dinic,5,2924
+tower,GC Dinic,6,2992
+tower,GC Dinic,7,2938
+tower,GC Dinic,8,3064
+tower,GC Dinic,9,3016
+tower,GC Dinic,10,3080
+tower,GC Dinic,11,3234
+tower,GC Dinic,12,3246
+tower,GC Dinic,13,3088
+tower,GC Dinic,14,3260
+tower,GC Dinic,15,3214
+tower,GC Dinic,16,3430
+tower,GC Dinic,17,3400
+tower,GC Dinic,18,3482
+tower,GC Dinic,19,3730
+tower,GC Dinic,20,3776
+tower,GC Dinic,21,3912
+tower,GC Dinic,22,4044
+tower,GC Dinic,23,4232
+tower,GC Dinic,24,4908
+tower,GC Dinic,25,4952
+tower,GC Dinic,26,5124
+tower,GC Dinic,27,5222
+tower,GC Dinic,28,5280
+tower,GC Dinic,29,5356
+tower,GC Dinic,30,5414
+tower,GC Dinic,31,5440
+tower,GC Dinic,32,5466
+tower,GC Dinic,33,5510
+tower,GC Dinic,34,5536
+tower,GC Dinic,35,5660
+tower,GC Dinic,36,5688
+tower,GC Dinic,37,5712
+tower,GC Dinic,38,5724
+tower,GC Dinic,39,5760
+tower,GC Dinic,40,5864
+tower,GC Dinic,41,5930
+tower,GC Dinic,42,5958
+tower,GC Dinic,43,5930
+tower,GC Dinic,44,6104
+tower,GC Dinic,45,6166
+tower,GC Dinic,46,6168
+tower,GC Dinic,47,6170
+tower,GC Dinic,48,6266
+tower,GC Dinic,49,6222
+tower,GC Dinic,50,6374
+tower,GC Dinic,51,6392
+tower,GC Dinic,52,6392
+tower,GC Dinic,53,6326
+tower,GC Dinic,54,6440
+tower,GC Dinic,55,6448
+tower,GC Dinic,56,6480
+tower,GC Dinic,57,6402
+tower,GC Dinic,58,6544
+tower,GC Dinic,59,6446
+tower,GC Dinic,60,6610
+tower,GC Dinic,61,6542
+tower,GC Dinic,62,6500
+tower,GC Dinic,63,6592
+tower,GC Dinic,64,6646
+tower,GC Dinic,65,6682
+tower,GC Dinic,66,6588
+tower,GC Dinic,67,6674
+tower,GC Dinic,68,6810
+tower,GC Dinic,69,6848
+tower,GC Dinic,70,6880
+tower,GC Dinic,71,6942
+tower,GC Dinic,72,7010
+tower,GC Dinic,73,6994
+tower,GC Dinic,74,7048
+tower,GC Dinic,75,7010
+tower,GC Dinic,76,7036
+tower,GC Dinic,77,7132
+tower,GC Dinic,78,7232
+tower,GC Dinic,79,7184
+tower,GC Dinic,80,7226
+synthetic,Greedy,1,344
+synthetic,Greedy,2,344
+synthetic,Greedy,3,344
+synthetic,Greedy,4,344
+synthetic,Greedy,5,344
+synthetic,Greedy,6,344
+synthetic,Greedy,7,344
+synthetic,Greedy,8,344
+synthetic,Greedy,9,344
+synthetic,Greedy,10,344
+synthetic,Greedy,11,344
+synthetic,Greedy,12,344
+synthetic,Greedy,13,344
+synthetic,Greedy,14,344
+synthetic,Greedy,15,344
+synthetic,Greedy,16,344
+synthetic,Greedy,17,344
+synthetic,Greedy,18,344
+synthetic,Greedy,19,344
+synthetic,Greedy,20,344
+synthetic,Greedy,21,344
+synthetic,Greedy,22,344
+synthetic,Greedy,23,344
+synthetic,Greedy,24,344
+synthetic,Greedy,25,344
+synthetic,Greedy,26,344
+synthetic,Greedy,27,344
+synthetic,Greedy,28,698
+synthetic,Greedy,29,2002
+synthetic,Greedy,30,1514
+synthetic,Greedy,31,1514
+synthetic,Greedy,32,1512
+synthetic,Greedy,33,1504
+synthetic,Greedy,34,1496
+synthetic,Greedy,35,1498
+synthetic,Greedy,36,1494
+synthetic,Greedy,37,1374
+synthetic,Greedy,38,1374
+synthetic,Greedy,39,1374
+synthetic,Greedy,40,1380
+synthetic,Greedy,41,1374
+synthetic,Greedy,42,1496
+synthetic,Greedy,43,1374
+synthetic,Greedy,44,1496
+synthetic,Greedy,45,1370
+synthetic,Greedy,46,1016
+synthetic,Greedy,47,1016
+synthetic,Greedy,48,1016
+synthetic,Greedy,49,1016
+synthetic,Greedy,50,1016
+synthetic,DP (ref),1,328
+synthetic,DP (ref),2,328
+synthetic,DP (ref),3,328
+synthetic,DP (ref),4,328
+synthetic,DP (ref),5,328
+synthetic,DP (ref),6,328
+synthetic,DP (ref),7,328
+synthetic,DP (ref),8,328
+synthetic,DP (ref),9,328
+synthetic,DP (ref),10,328
+synthetic,DP (ref),11,328
+synthetic,DP (ref),12,328
+synthetic,DP (ref),13,328
+synthetic,DP (ref),14,328
+synthetic,DP (ref),15,328
+synthetic,DP (ref),16,328
+synthetic,DP (ref),17,328
+synthetic,DP (ref),18,328
+synthetic,DP (ref),19,328
+synthetic,DP (ref),20,328
+synthetic,DP (ref),21,328
+synthetic,DP (ref),22,328
+synthetic,DP (ref),23,328
+synthetic,DP (ref),24,328
+synthetic,DP (ref),25,328
+synthetic,DP (ref),26,328
+synthetic,DP (ref),27,328
+synthetic,DP (ref),28,328
+synthetic,DP (ref),29,328
+synthetic,DP (ref),30,328
+synthetic,DP (ref),31,328
+synthetic,DP (ref),32,328
+synthetic,DP (ref),33,328
+synthetic,DP (ref),34,328
+synthetic,DP (ref),35,328
+synthetic,DP (ref),36,328
+synthetic,DP (ref),37,328
+synthetic,DP (ref),38,328
+synthetic,DP (ref),39,328
+synthetic,DP (ref),40,328
+synthetic,DP (ref),41,328
+synthetic,DP (ref),42,328
+synthetic,DP (ref),43,328
+synthetic,DP (ref),44,328
+synthetic,DP (ref),45,328
+synthetic,DP (ref),46,328
+synthetic,DP (ref),47,328
+synthetic,DP (ref),48,328
+synthetic,DP (ref),49,328
+synthetic,DP (ref),50,328
+synthetic,GC Dinic,1,328
+synthetic,GC Dinic,2,328
+synthetic,GC Dinic,3,328
+synthetic,GC Dinic,4,328
+synthetic,GC Dinic,5,328
+synthetic,GC Dinic,6,328
+synthetic,GC Dinic,7,328
+synthetic,GC Dinic,8,328
+synthetic,GC Dinic,9,328
+synthetic,GC Dinic,10,328
+synthetic,GC Dinic,11,328
+synthetic,GC Dinic,12,328
+synthetic,GC Dinic,13,328
+synthetic,GC Dinic,14,328
+synthetic,GC Dinic,15,328
+synthetic,GC Dinic,16,328
+synthetic,GC Dinic,17,328
+synthetic,GC Dinic,18,328
+synthetic,GC Dinic,19,328
+synthetic,GC Dinic,20,328
+synthetic,GC Dinic,21,328
+synthetic,GC Dinic,22,328
+synthetic,GC Dinic,23,328
+synthetic,GC Dinic,24,328
+synthetic,GC Dinic,25,328
+synthetic,GC Dinic,26,328
+synthetic,GC Dinic,27,328
+synthetic,GC Dinic,28,328
+synthetic,GC Dinic,29,328
+synthetic,GC Dinic,30,328
+synthetic,GC Dinic,31,328
+synthetic,GC Dinic,32,328
+synthetic,GC Dinic,33,328
+synthetic,GC Dinic,34,328
+synthetic,GC Dinic,35,328
+synthetic,GC Dinic,36,328
+synthetic,GC Dinic,37,328
+synthetic,GC Dinic,38,328
+synthetic,GC Dinic,39,328
+synthetic,GC Dinic,40,328
+synthetic,GC Dinic,41,328
+synthetic,GC Dinic,42,328
+synthetic,GC Dinic,43,328
+synthetic,GC Dinic,44,328
+synthetic,GC Dinic,45,328
+synthetic,GC Dinic,46,328
+synthetic,GC Dinic,47,328
+synthetic,GC Dinic,48,328
+synthetic,GC Dinic,49,328
+synthetic,GC Dinic,50,328

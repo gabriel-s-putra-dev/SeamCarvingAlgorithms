@@ -1,6 +1,6 @@
 // Seam carving: choose an algorithm and shrink an image to a new size.
 //
-//   seamcarve <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek> [backward|forward]
+//   seamcarve <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek|greedy> [backward|forward]
 //   seamcarve                     (no arguments: interactive menu)
 //
 // A width or height of 0 (or pressing Enter in the menu) keeps that dimension
@@ -9,9 +9,9 @@
 //
 // Writes the resized image to <output> and the removed seams drawn on the
 // original (red = vertical, green = horizontal) to <output-name>_seams.png.
-// Greedy will be added to the menu once GreedyAlgorithm is implemented.
 #include "DynamicProgramming.h"
 #include "GraphCutting.h"
+#include "GreedyAlgorithm.h"
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -22,7 +22,7 @@
 #include <iostream>
 #include <string>
 
-enum class Algorithm { DP, GraphCutDinic, GraphCutEdmondsKarp };
+enum class Algorithm { DP, GraphCutDinic, GraphCutEdmondsKarp, Greedy };
 
 struct Options
 {
@@ -47,6 +47,7 @@ static const char* AlgorithmName(Algorithm a)
     case Algorithm::DP:                  return "Dynamic Programming";
     case Algorithm::GraphCutDinic:       return "Graph Cut (Dinic)";
     case Algorithm::GraphCutEdmondsKarp: return "Graph Cut (Edmonds-Karp)";
+    case Algorithm::Greedy:              return "Greedy";
     }
     return "?";
 }
@@ -56,6 +57,7 @@ static bool ParseAlgorithm(const std::string& s, Algorithm& out)
     if (s == "dp" || s == "1")       { out = Algorithm::DP;                  return true; }
     if (s == "gc-dinic" || s == "2") { out = Algorithm::GraphCutDinic;       return true; }
     if (s == "gc-ek" || s == "3")    { out = Algorithm::GraphCutEdmondsKarp; return true; }
+    if (s == "greedy" || s == "4")   { out = Algorithm::Greedy;              return true; }
     return false;
 }
 
@@ -127,9 +129,10 @@ static bool AskOptions(Options& o, cv::Mat& img)
     if (!AskSize("New width ", img.cols, o.newWidth)) return false;
     if (!AskSize("New height", img.rows, o.newHeight)) return false;
 
-    std::cout << "Algorithm:\n  1) Dynamic Programming\n  2) Graph Cut (Dinic)\n  3) Graph Cut (Edmonds-Karp)\n";
+    std::cout << "Algorithm:\n  1) Dynamic Programming\n  2) Graph Cut (Dinic)\n  3) Graph Cut (Edmonds-Karp)\n"
+                 "  4) Greedy\n";
     while (!ParseAlgorithm(Ask("Choice: "), o.algorithm))
-        if (!std::cin) return false; else std::cout << "  enter 1, 2 or 3\n";
+        if (!std::cin) return false; else std::cout << "  enter 1, 2, 3 or 4\n";
 
     std::cout << "Energy:\n  1) Backward (Sobel gradient)\n  2) Forward (simplified)\n";
     while (!ParseEnergy(Ask("Choice: "), o.forward))
@@ -153,6 +156,16 @@ static RunResult Run(const cv::Mat& img, const Options& o)
         r.seamsRemoved = st.seamCosts.size();
         r.seamSeconds = st.seamSeconds;
     }
+    else if (o.algorithm == Algorithm::Greedy)
+    {
+        Greedy::CarveStats st;
+        r.resized = Greedy::Carve(img, o.newWidth, o.newHeight,
+                                  o.forward ? Greedy::EnergyType::Forward : Greedy::EnergyType::Backward, &st, true);
+        r.seams = Greedy::DrawSeams(img, st);
+        r.totalCost = static_cast<long long>(st.totalCost);
+        r.seamsRemoved = st.seamCosts.size();
+        r.seamSeconds = st.seamSeconds;
+    }
     else
     {
         GraphCut::CarveStats st;
@@ -171,7 +184,7 @@ static RunResult Run(const cv::Mat& img, const Options& o)
 
 static void PrintUsage(const char* exe)
 {
-    std::printf("usage: %s <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek> [backward|forward]\n"
+    std::printf("usage: %s <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek|greedy> [backward|forward]\n"
                 "       %s                (interactive menu)\n"
                 "       a width or height of 0 keeps the original size\n", exe, exe);
 }
@@ -212,7 +225,8 @@ int main(int argc, char** argv)
     }
 
     const int seams = (img.cols - o.newWidth) + (img.rows - o.newHeight);
-    if (o.algorithm != Algorithm::DP && seams > 0 && img.total() > 50000)
+    const bool graphCut = o.algorithm == Algorithm::GraphCutDinic || o.algorithm == Algorithm::GraphCutEdmondsKarp;
+    if (graphCut && seams > 0 && img.total() > 50000)
         std::printf("note: Graph Cut builds a max-flow graph for every seam and is roughly 1000x slower\n"
                     "      than DP at this size; %d seams may take a while.\n", seams);
 
