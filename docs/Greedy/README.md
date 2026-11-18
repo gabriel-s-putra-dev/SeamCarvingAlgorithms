@@ -8,7 +8,7 @@ report answers the question in the brief: *does greedy give results comparable
 to DP in visual quality?* It also compares the seams, the visual quality and
 the running time of the two methods.
 
-**Short answer: no.** Greedy is 70–3 000× faster at *finding* a seam
+**Short answer: no.** Greedy is 15–1 500× faster at *finding* a seam
 (100×68 up to 2000×1358 pixels). It
 finds an optimal seam only by luck, though, and is often 2–3× worse
 (48× with the forward energy on the tower). Its seams cut through the towers
@@ -133,7 +133,7 @@ m rows, n columns, N = mn pixels. Vertical seams; horizontal seams swap m and n.
 | Energy map (Sobel) | O(N) | O(N) |
 | **Find one seam** | **O(n + m)**: argmin of row 0, then 3 pixels per row | **O(N)**: fill the m × n table, backtrack O(m) |
 | Remove one seam | O(N) copy | O(N) copy |
-| Extra memory for the search | **O(m)**: just the seam | O(N): table + back-pointers (12 B/pixel) |
+| Extra memory for the search | **O(m)**: just the seam | O(N): one 64-bit table `M` (8 B/pixel); the seam is backtracked through `M` |
 | Resize by k seams | O(k·N): energy + removal dominate | O(k·N) |
 
 **Greedy only speeds up the search step.** The energy map and the removal are
@@ -142,35 +142,50 @@ improves only the constant (§2.1).
 
 ### 2.1 Measured running time
 
+**Setup.** `greedy_bench` Release build, run on 18 Nov 2026: AMD Ryzen 5 3600
+(6 cores / 12 threads), 16 GB RAM, Windows 10, MSVC 19.44 `/O2`, OpenCV 4.14.0.
+"DP" is the team's `DynamicProgramming.cpp` (`DP::FindVerticalSeam`). Greedy and
+DP times are averages over repeated calls (at least 0.05 s per method and size);
+graph-cut and full-resize times are single runs. The benchmark was run twice and
+the second run is reported: greedy and graph-cut times agreed within 20 %, but
+DP's times at 15k–109k px were 1.5–3.6× higher in the first run. Read ratios and
+growth rates, not absolute times. The Graph Cut report's times come from a
+different machine (Linux VM), so its absolute numbers differ.
+
 Time to find **one** vertical seam on the tower image rescaled to increasing
-sizes, with the energy map excluded (`results/single_seam_timing.csv`, Release
-build, averaged over repeated calls):
+sizes, with the energy map excluded (`results/single_seam_timing.csv`):
 
 ![Time to find one seam vs image size](results/single_seam_timing.png)
 
-| Size | Pixels | Greedy | DP (ref) | GC Dinic | DP / Greedy |
+| Size | Pixels | Greedy | DP | GC Dinic | DP / Greedy |
 |---|---|---|---|---|---|
-| 100×68 | 6 800 | 0.32 µs | 23 µs | 9.1 ms | 72× |
-| 274×186 (original) | 50 964 | 0.74 µs | 419 µs | 123 ms | 570× |
-| 600×407 | 244 200 | 1.6 µs | 1.5 ms | 1.9 s | 940× |
-| 2000×1358 | 2 716 000 | 4.7 µs | 15.2 ms | — | 3 270× |
+| 100×68 | 6 800 | 0.49 µs | 7.1 µs | 10.1 ms | 15× |
+| 274×186 (original) | 50 964 | 1.0 µs | 46 µs | 123 ms | 46× |
+| 600×407 | 244 200 | 2.2 µs | 594 µs | 1.94 s | 271× |
+| 2000×1358 | 2 716 000 | 6.6 µs | 9.7 ms | — | 1 485× |
 
-* **Greedy grows like N^0.45**, which matches O(m + n). The images keep their
+* **Greedy grows like N^0.43**, which matches O(m + n). The images keep their
   aspect ratio, so m + n ∝ √N, and the predicted exponent is 0.5.
-* **DP grows like N^1.08**, which matches O(N).
-* **The gap therefore widens like √N.** Greedy is 72× faster at 6 800 px and
-  3 270× faster at 2.7 Mpx.
+* **DP grows like N^1.21** over the whole range. Up to 108 800 px it is close to
+  linear (N^0.95), as O(N) predicts. Between 108 800 and 244 200 px its time
+  jumps 6× for 2.2× more pixels, in both runs. The likely cause is memory: the
+  8 B/pixel table grows from 0.8 to 1.9 MiB and probably no longer fits in the
+  CPU cache. Cache misses were not measured.
+* **The gap therefore widens with size.** Greedy is 15× faster at 6 800 px and
+  1 485× faster at 2.7 Mpx.
 
 **Full resize** (`results/full_resize.csv`, energy recomputed after every seam):
 
 | Image | Seams | Greedy: finding seams / total | DP: finding seams / total | Total-time speed-up |
 |---|---|---|---|---|
-| tower 274×186 | 80 vertical | 0.049 s / 0.057 s | 0.069 s / 0.077 s | 1.3× |
-| synthetic 180×120 | 50 vertical | 0.014 s / 0.016 s | 0.015 s / 0.017 s | 1.04× |
+| tower 274×186 | 80 vertical | 0.073 s / 0.087 s | 0.085 s / 0.098 s | 1.13× |
+| synthetic 180×120 | 50 vertical | 0.020 s / 0.024 s | 0.022 s / 0.026 s | 1.07× |
 
-Here the 570× speed-up of the search becomes about 1.3×. "Finding seams"
+Here the 46× speed-up of the search becomes about 1.1×. "Finding seams"
 includes the Sobel energy map, which is the same O(N) work for both methods
-and dominates the greedy time. The search is ~0.7 µs out of ~0.6 ms per seam.
+and dominates the greedy time. The search is ~1 µs out of ~1.1 ms per seam.
+These are single runs, and the synthetic result is within noise: in the first
+run DP was faster (0.015 s against greedy's 0.019 s).
 **On real resizes, greedy saves very little time and pays for it in quality**
 (§3).
 
@@ -226,7 +241,7 @@ of sky next to the tower leads the seam straight into the stone.
 ### 3.2 Seam cost: greedy vs the optimal seam
 
 **First seam, real images** (`results/seam_cost.csv`). The optimum is the
-reference DP, confirmed independently by graph cut.
+team DP (`DynamicProgramming.cpp`), confirmed independently by graph cut.
 
 | Image | Energy | Greedy | Optimal (DP = GC) | Greedy / optimal |
 |---|---|---|---|---|
@@ -388,7 +403,7 @@ least one pixel.
 2. **Visual quality.** Greedy cuts through the tower and the sun, which DP and
    graph cut avoid. It removes 1.4–2.9× more strong-edge pixels.
 3. **Running time.** Greedy's seam search is O(m + n) against DP's O(mn), and
-   is 570× faster on the tower. A full resize is only 1.3× faster, though,
+   is 46× faster on the tower. A full resize is only 1.1× faster, though,
    because the O(mn) energy map and seam removal dominate both methods.
 
 Greedy fails by design, not because of a bug. Seam carving needs a global
@@ -413,9 +428,9 @@ high-contrast objects.
 | | Greedy | DP | Graph cut (Dinic) |
 |---|---|---|---|
 | Optimal seam? | No (G ≥ OPT, ratio unbounded) | Yes | Yes (same cost as DP) |
-| Find one seam | O(m + n) | O(mn) | O(N³) worst case, ~N^1.3–1.5 measured |
-| Extra memory | O(m) | O(mn) | O(mn), ~176 B/pixel |
-| 80 seams, tower | 0.057 s | 0.077 s | 22.9 s |
+| Find one seam | O(m + n) | O(mn) | O(N³) worst case, ~N^1.5–1.6 measured |
+| Extra memory | O(m) | O(mn), 8 B/pixel | O(mn), 256 B/pixel measured peak |
+| 80 seams, tower | 0.087 s | 0.098 s | 26.5 s |
 | Cumulative cost, 80 seams, tower | 900 958 | 430 676 | 430 676 |
 | Visual quality | Seams cut through objects | Good | Same as DP |
 

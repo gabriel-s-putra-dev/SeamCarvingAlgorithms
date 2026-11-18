@@ -17,7 +17,7 @@ RESULTS = os.path.join("docs", "Greedy", "results")
 # Same colours as tools/plot_graphcut_timing.py so figures match across reports.
 STYLE = {
     "Greedy": ("#eb6834", "s"),
-    "DP (ref)": ("#2a78d6", "o"),
+    "DP": ("#2a78d6", "o"),
     "GC Dinic": ("#1baf7a", "^"),
 }
 

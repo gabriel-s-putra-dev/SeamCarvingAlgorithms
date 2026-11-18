@@ -22,7 +22,7 @@ RESULTS = os.path.join("docs", "Greedy", "results")
 # Same colours as tools/plot_greedy_timing.py / plot_graphcut_timing.py.
 STYLE = {
     "Greedy": ("#eb6834", "-"),
-    "DP (ref)": ("#2a78d6", "-"),
+    "DP": ("#2a78d6", "-"),
     "GC Dinic": ("#1baf7a", "--"),
 }
 
@@ -46,7 +46,7 @@ def seam_cost_per_step():
             if not ys:
                 continue
             ax.plot(range(1, len(ys) + 1), ys, color=color, linestyle=ls, linewidth=1.8, label=method)
-        g, d = costs[(image, "Greedy")], costs[(image, "DP (ref)")]
+        g, d = costs[(image, "Greedy")], costs[(image, "DP")]
         ratios = [a / b for a, b in zip(g, d) if b > 0]
         worse = sum(a > b for a, b in zip(g, d))
         print(f"{image:10s} total greedy {sum(g):8d}  DP {sum(d):8d}  ratio {sum(g) / sum(d):.2f}x | "
