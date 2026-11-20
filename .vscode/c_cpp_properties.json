@@ -5,7 +5,7 @@
       "name": "Win32-MSVC",
       "includePath": [
         "${workspaceFolder}",
-        "${env:OpenCV_DIR}/include"
+        "C:/opencv/build/include"
       ],
       "cStandard": "c17",
       "cppStandard": "c++14",
