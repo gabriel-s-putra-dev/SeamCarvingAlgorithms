@@ -32,11 +32,25 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <string>
 #include <vector>
 
 static const std::string OUT = "docs/Greedy/results/";
+
+// Opens OUT + name for writing. Exits with a clear message instead of crashing
+// if the file cannot be opened (e.g. the CSV is open in Excel, which locks it).
+static FILE* OpenCsv(const std::string& name)
+{
+    FILE* f = std::fopen((OUT + name).c_str(), "w");
+    if (!f)
+    {
+        std::printf("cannot write %s%s (is it open in another program?)\n", OUT.c_str(), name.c_str());
+        std::exit(1);
+    }
+    return f;
+}
 
 struct Seam { std::vector<int> cols; int64_t cost; };
 using SeamFinder = std::function<Seam(const cv::Mat&)>;
@@ -97,7 +111,7 @@ static void SingleSeamTiming(const cv::Mat& img)
         { "DP", TeamDP, 100000, 0.05 },
         { "GC Dinic", GCSeam, 600, 0.0 },
     };
-    FILE* f = std::fopen((OUT + "single_seam_timing.csv").c_str(), "w");
+    FILE* f = OpenCsv("single_seam_timing.csv");
     std::fprintf(f, "method,width,height,pixels,seconds,seam_cost\n");
     std::printf("Single-seam timing (energy map excluded)\n");
     for (int w : { 30, 45, 68, 100, 150, 225, 274, 400, 600, 900, 1350, 2000 })
@@ -124,7 +138,7 @@ static void SingleSeamTiming(const cv::Mat& img)
 // ---------------------------------------------------------------------------
 static void FirstSeamCost(const std::vector<std::pair<std::string, cv::Mat>>& images)
 {
-    FILE* f = std::fopen((OUT + "seam_cost.csv").c_str(), "w");
+    FILE* f = OpenCsv("seam_cost.csv");
     std::fprintf(f, "image,energy,greedy_cost,dp_cost,gc_cost,greedy_over_optimal\n");
     std::printf("First-seam cost (greedy vs optimal)\n");
     for (const auto& item : images)
@@ -288,8 +302,8 @@ int main()
     FirstSeamCost({ { "tower", tower }, { "synthetic", synthetic } });
 
     std::printf("Full resize (vertical seams, backward energy)\n");
-    FILE* f = std::fopen((OUT + "full_resize.csv").c_str(), "w");
-    FILE* ps = std::fopen((OUT + "seam_costs.csv").c_str(), "w");
+    FILE* f = OpenCsv("full_resize.csv");
+    FILE* ps = OpenCsv("seam_costs.csv");
     std::fprintf(f, "image,method,size,seams_removed,seam_seconds,total_seconds,total_cost\n");
     std::fprintf(ps, "image,method,seam_index,seam_cost\n");
     FullResize("tower", tower, 80, f, ps);

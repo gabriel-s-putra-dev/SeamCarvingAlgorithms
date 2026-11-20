@@ -10,7 +10,7 @@ vertical and horizontal seams. OpenCV is used only for image I/O, `cvtColor`,
 | [`DynamicProgramming.h`](../../DynamicProgramming.h) / [`DynamicProgramming.cpp`](../../DynamicProgramming.cpp) | Energy map, cumulative table, vertical/horizontal seams, seam removal, carve loop, seam overlay |
 | [`main.cpp`](../../main.cpp) | Algorithm menu: DP or Graph Cut (Dinic / Edmonds–Karp), backward or forward energy |
 | [`tests/DynamicProgrammingTests.cpp`](../../tests/DynamicProgrammingTests.cpp) | Energy map tests (327 checks) |
-| [`tests/SeamTests.cpp`](../../tests/SeamTests.cpp) | Minimum-seam tests for step (b) |
+| [`tests/SeamTests.cpp`](../../tests/SeamTests.cpp) | Minimum-seam tests for step (b) (1 054 checks) |
 | [`tests/CarveTests.cpp`](../../tests/CarveTests.cpp) | Seam removal and carve loop tests (80 checks) |
 | [`results/`](results) | Output images used below |
 
@@ -219,7 +219,7 @@ Shamir (2007), would usually bend edges less. This is not implemented.
 | Suite | Checks | What it covers |
 |---|---|---|
 | `tests/DynamicProgrammingTests.cpp` | 327 | Energy type/size, flat image = 0, step edges, hand-computed forward values, 1/3/4 channels, empty input, equal to `GraphCut::ComputeEnergy` on random images and both sample images |
-| `tests/SeamTests.cpp` | — | Step (b): hand-worked table, tie-breaking, brute-force optimality, edge cases (being restored) |
+| `tests/SeamTests.cpp` | 1 054 | Step (b): hand-worked table (64-bit `M`), horizontal = transposed vertical, tie-breaking, brute-force optimality on 300 random maps, 1×1/1×N/N×1, invalid input (empty, wrong type, negative energy, disconnected or out-of-range seams), no overflow beyond `INT_MAX`, `ComputeEnergy` integration |
 | `tests/CarveTests.cpp` | 80 | Seam removal (hand examples, colour, coordinate map), invalid seams, output sizes, `Carve` equal to a hand-written energy → seam → remove loop, recorded seams cover every removed pixel exactly once, reference totals (430 676 / 16 400 / 668 244), pixel-identical to `GraphCut::Carve` with both energies |
 
 Build and run any suite like the quick start, replacing `main.cpp` with the

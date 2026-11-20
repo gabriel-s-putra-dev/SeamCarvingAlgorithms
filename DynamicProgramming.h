@@ -15,6 +15,8 @@
 // ============================================================================
 #include <opencv2/core.hpp>
 
+#include <vector>
+
 namespace DP
 {
     enum class EnergyType { Backward, Forward };
@@ -26,6 +28,8 @@ namespace DP
     //             c[i][j] = |I[i][j+1] - I[i][j-1]|  (border pixels replicated),
     //             i.e. the new intensity edge created when (i, j) is removed
     //             and its left and right neighbours meet.
+    //             This cost is meant for VERTICAL seams only; see the note at
+    //             FindHorizontalSeam.
     // Accepts 1-, 3- (BGR) or 4-channel (BGRA) 8-bit images.
     // Throws std::invalid_argument on an empty image.
     cv::Mat ComputeEnergy(const cv::Mat& img, EnergyType type = EnergyType::Backward);
@@ -43,7 +47,8 @@ namespace DP
     // A double holds every whole number up to 2^53 exactly, so the values are
     // exact integers for any realistic image size. (CV_64S is not used because
     // it only exists in OpenCV >= 4.12.)
-    // energy must be non-empty CV_32SC1, otherwise std::invalid_argument.
+    // energy must be a non-empty CV_32SC1 map with no negative values,
+    // otherwise std::invalid_argument (this applies to every function in (b)).
     cv::Mat CumulativeEnergy(const cv::Mat& energy);
 
     // Minimum-energy VERTICAL seam: returns a vector of size energy.rows where
@@ -57,12 +62,23 @@ namespace DP
     // by at most 1. Implemented by transposing the energy map and reusing
     // FindVerticalSeam.
     // energy must be non-empty CV_32SC1, otherwise std::invalid_argument.
+    //
+    // NOTE on FORWARD energy: ComputeEnergy(img, Forward) compares each pixel's
+    // LEFT and RIGHT neighbours, which is the right cost for a vertical seam
+    // only. For a horizontal seam with forward energy, compute the energy on
+    // the TRANSPOSED image and find a vertical seam there:
+    //     cv::Mat t = img.t();
+    //     std::vector<int> seam = FindVerticalSeam(ComputeEnergy(t, EnergyType::Forward));
+    //     // seam[j] = row removed in column j of img
+    // Carve already does this. Backward (Sobel) energy is the same in both
+    // directions, so FindHorizontalSeam(ComputeEnergy(img)) is fine for it.
     std::vector<int> FindHorizontalSeam(const cv::Mat& energy);
 
     // Total energy of a seam (useful for testing / comparing with Greedy and
     // Graph Cut). vertical = true: seam[i] is a column per row;
     // vertical = false: seam[j] is a row per column.
-    // Throws std::invalid_argument if energy is empty / not CV_32SC1, if the
+    // Throws std::invalid_argument if energy is empty / not CV_32SC1 / has
+    // negative values, if the
     // seam has the wrong length, if any index is outside the image, or if the
     // seam is not connected (consecutive entries differing by more than 1).
     long long SeamEnergy(const cv::Mat& energy, const std::vector<int>& seam, bool vertical);

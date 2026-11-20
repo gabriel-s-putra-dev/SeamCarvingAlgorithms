@@ -19,7 +19,7 @@ O(mn) per seam for both methods.
 | File | Purpose |
 |---|---|
 | [`GreedyAlgorithm.h`](../../GreedyAlgorithm.h) / [`GreedyAlgorithm.cpp`](../../GreedyAlgorithm.cpp) | Greedy vertical/horizontal seam, seam removal, `Carve` loop, `DrawSeams` |
-| [`tests/GreedyTests.cpp`](../../tests/GreedyTests.cpp) | Correctness tests (14 811 checks) |
+| [`tests/GreedyTests.cpp`](../../tests/GreedyTests.cpp) | Correctness tests (14 816 checks) |
 | [`tests/GreedyBenchmark.cpp`](../../tests/GreedyBenchmark.cpp) | Timing, first-seam cost, full resize, side-by-side images → [`results/`](results) |
 | [`tests/GreedyAnalysis.cpp`](../../tests/GreedyAnalysis.cpp) | Random-map cost study, visual-quality metrics, zoom and forward-energy figures → [`results/`](results) |
 | [`tools/plot_greedy_timing.py`](../../tools/plot_greedy_timing.py), [`tools/plot_greedy_analysis.py`](../../tools/plot_greedy_analysis.py) | Charts from the CSVs |
@@ -34,7 +34,7 @@ cached).
 # Windows (any shell, Visual Studio 2022 installed)
 cmake --preset vs2022
 cmake --build --preset vs2022-release --target greedy_tests greedy_bench greedy_analysis
-out\build\vs2022\Release\greedy_tests.exe      # 14 811 checks passed, 0 failed
+out\build\vs2022\Release\greedy_tests.exe      # 14 816 checks passed, 0 failed
 out\build\vs2022\Release\greedy_bench.exe      # timing + comparison images (~30 s, graph cut dominates)
 out\build\vs2022\Release\greedy_analysis.exe   # random maps + quality metrics (a few seconds)
 
@@ -195,7 +195,7 @@ run DP was faster (0.015 s against greedy's 0.019 s).
 
 ### 3.1 Correctness tests (`tests/GreedyTests.cpp`)
 
-`greedy_tests` runs 14 811 checks, all passing:
+`greedy_tests` runs 14 816 checks, all passing:
 
 | Group | What is checked |
 |---|---|

@@ -340,15 +340,31 @@ namespace GraphCut
     // ========================================================================
     // Seam removal and carving loop
     // ========================================================================
+    // Validates a removal before anything is changed, so a bad seam throws
+    // std::invalid_argument (same behaviour as DP and Greedy) and img is left
+    // untouched. length = pixels along the seam, limit = valid index range.
+    static void CheckRemoval(const cv::Mat& img, const std::vector<int>& seam,
+                             int length, int limit, const char* who)
+    {
+        if (img.empty())
+            throw std::invalid_argument(std::string(who) + ": image is empty");
+        if (limit < 2)
+            throw std::invalid_argument(std::string(who) + ": image is too small to remove a seam");
+        if (static_cast<int>(seam.size()) != length)
+            throw std::invalid_argument(std::string(who) + ": seam has the wrong length");
+        for (int v : seam)
+            if (v < 0 || v >= limit)
+                throw std::invalid_argument(std::string(who) + ": seam index out of range");
+    }
+
     void RemoveVerticalSeam(cv::Mat& img, const std::vector<int>& seam)
     {
-        CV_Assert(static_cast<int>(seam.size()) == img.rows && img.cols > 1);
+        CheckRemoval(img, seam, img.rows, img.cols, "GraphCut::RemoveVerticalSeam");
         cv::Mat out(img.rows, img.cols - 1, img.type());
         const size_t es = img.elemSize();
         for (int i = 0; i < img.rows; ++i)
         {
             const int c = seam[i];
-            CV_Assert(c >= 0 && c < img.cols);
             const uchar* src = img.ptr(i);
             uchar* dst = out.ptr(i);
             std::memcpy(dst, src, c * es);                                   // left of seam
@@ -359,6 +375,7 @@ namespace GraphCut
 
     void RemoveHorizontalSeam(cv::Mat& img, const std::vector<int>& seam)
     {
+        CheckRemoval(img, seam, img.cols, img.rows, "GraphCut::RemoveHorizontalSeam");
         cv::Mat t;
         cv::transpose(img, t);
         RemoveVerticalSeam(t, seam);
@@ -428,14 +445,28 @@ namespace GraphCut
 
     cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats)
     {
+        if (original.empty() || original.depth() != CV_8U)
+            throw std::invalid_argument("GraphCut::DrawSeams: original must be a non-empty 8-bit image");
+
         cv::Mat vis;
         if (original.channels() == 1)      cv::cvtColor(original, vis, cv::COLOR_GRAY2BGR);
         else if (original.channels() == 4) cv::cvtColor(original, vis, cv::COLOR_BGRA2BGR);
         else                               vis = original.clone();
-        for (const auto& seam : stats.verticalSeams)
-            for (const cv::Point& p : seam) vis.at<cv::Vec3b>(p) = cv::Vec3b(0, 0, 255);
-        for (const auto& seam : stats.horizontalSeams)
-            for (const cv::Point& p : seam) vis.at<cv::Vec3b>(p) = cv::Vec3b(0, 255, 0);
+
+        const cv::Rect bounds(0, 0, vis.cols, vis.rows);
+        auto draw = [&](const std::vector<std::vector<cv::Point>>& seams, const cv::Vec3b& colour)
+        {
+            for (const auto& seam : seams)
+                for (const cv::Point& p : seam)
+                {
+                    if (!bounds.contains(p))
+                        throw std::invalid_argument("GraphCut::DrawSeams: seam point outside the image "
+                                                    "(stats from a different image?)");
+                    vis.at<cv::Vec3b>(p) = colour;
+                }
+        };
+        draw(stats.verticalSeams, cv::Vec3b(0, 0, 255));     // red   (BGR)
+        draw(stats.horizontalSeams, cv::Vec3b(0, 255, 0));   // green
         return vis;
     }
 }

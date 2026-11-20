@@ -45,7 +45,13 @@ namespace Greedy
 
     // Greedy seam on an energy map of type CV_32SC1 (as returned by
     // DP::ComputeEnergy). The seam is 8-connected: consecutive entries differ
-    // by at most 1. Throws std::invalid_argument on an empty or non-CV_32SC1 map.
+    // by at most 1. Throws std::invalid_argument on an empty or non-CV_32SC1
+    // map, or one with negative values.
+    //
+    // NOTE on FORWARD energy: it compares left and right neighbours, so it is
+    // the right cost for VERTICAL seams only. For a horizontal seam with
+    // forward energy use FindVerticalSeam(DP::ComputeEnergy(img.t(), Forward))
+    // on the transposed image (Carve does this). See DP::FindHorizontalSeam.
     SeamResult FindVerticalSeam(const cv::Mat& energy);
     SeamResult FindHorizontalSeam(const cv::Mat& energy);
 
@@ -79,6 +85,8 @@ namespace Greedy
 
     // Copy of the original image with all removed seams drawn
     // (red = vertical, green = horizontal). Needs stats from a Carve call
-    // made with recordSeams = true.
+    // made with recordSeams = true. Throws std::invalid_argument if original
+    // is empty / not 8-bit, or a seam point lies outside it (stats from a
+    // different image).
     cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats);
 }

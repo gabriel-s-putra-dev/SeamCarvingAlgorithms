@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <string>
 #include <utility>
@@ -25,6 +26,19 @@
 using namespace GraphCut;
 
 static const std::string OUT = "docs/GraphCutting/results/";
+
+// Opens OUT + name for writing. Exits with a clear message instead of crashing
+// if the file cannot be opened (e.g. the CSV is open in Excel, which locks it).
+static FILE* OpenCsv(const std::string& name)
+{
+    FILE* f = std::fopen((OUT + name).c_str(), "w");
+    if (!f)
+    {
+        std::printf("cannot write %s%s (is it open in another program?)\n", OUT.c_str(), name.c_str());
+        std::exit(1);
+    }
+    return f;
+}
 
 struct Seam { std::vector<int> cols; int64_t cost; };
 using SeamFinder = std::function<Seam(const cv::Mat&)>;
@@ -70,7 +84,7 @@ static void SingleSeamTiming(const cv::Mat& img)
         { "GC Dinic", GC(MaxFlowAlgorithm::Dinic), 100000, 1 },
         { "GC Edmonds-Karp", GC(MaxFlowAlgorithm::EdmondsKarp), 400, 1 },
     };
-    FILE* f = std::fopen((OUT + "single_seam_timing.csv").c_str(), "w");
+    FILE* f = OpenCsv("single_seam_timing.csv");
     std::fprintf(f, "method,width,height,pixels,seconds,seam_cost\n");
     std::printf("Single-seam timing\n");
     for (int w : { 30, 45, 68, 100, 150, 225, 274, 400, 600, 900 })
@@ -101,7 +115,7 @@ static void SingleSeamTiming(const cv::Mat& img)
 // time per phase for one vertical seam (results/phase_scaling.csv).
 static void PhaseScaling(const cv::Mat& img)
 {
-    FILE* f = std::fopen((OUT + "phase_scaling.csv").c_str(), "w");
+    FILE* f = OpenCsv("phase_scaling.csv");
     std::fprintf(f, "width,height,pixels,arcs,graph_mib,seconds,phases,augmentations,ms_per_phase,seam_cost\n");
     std::printf("Dinic phase scaling\n");
     for (int w : { 274, 400, 600, 750, 900 })
@@ -126,7 +140,7 @@ static void PhaseScaling(const cv::Mat& img)
 
 static void MemoryUsage(const cv::Mat& img)
 {
-    FILE* f = std::fopen((OUT + "memory_usage.csv").c_str(), "w");
+    FILE* f = OpenCsv("memory_usage.csv");
     std::fprintf(f, "width,height,pixels,nodes,arcs,gc_bytes,gc_bytes_per_pixel,dp_bytes,dp_bytes_per_pixel\n");
     std::printf("Memory usage\n");
     for (int w : { 68, 150, 274, 600, 1200, 1920 })
@@ -265,7 +279,7 @@ int main(int argc, char** argv)
     MemoryUsage(tower);
 
     std::printf("First-seam cost\n");
-    FILE* f = std::fopen((OUT + "seam_cost.csv").c_str(), "w");
+    FILE* f = OpenCsv("seam_cost.csv");
     std::fprintf(f, "image,method,seam_cost,augmentations,phases\n");
     for (const auto& item : { std::make_pair(std::string("tower"), tower), std::make_pair(std::string("synthetic"), synthetic) })
     {
@@ -285,7 +299,7 @@ int main(int argc, char** argv)
     std::fclose(f);
 
     std::printf("Full resize\n");
-    f = std::fopen((OUT + "full_resize.csv").c_str(), "w");
+    f = OpenCsv("full_resize.csv");
     std::fprintf(f, "image,method,size,seams_removed,seconds,total_cost\n");
     FullResize("tower", tower, 80, f);
     FullResize("synthetic", synthetic, 50, f);
@@ -299,7 +313,7 @@ int main(int argc, char** argv)
                              Label(both, "result 194x150") }));
     std::printf("Both directions 274x186 -> 194x150: %.2f s, total cost %lld\n", st.seamSeconds,
                 (long long)st.totalCost);
-    f = std::fopen((OUT + "both_directions.csv").c_str(), "w");
+    f = OpenCsv("both_directions.csv");
     std::fprintf(f, "image,from,to,vertical_seams,horizontal_seams,seconds,total_cost\n");
     std::fprintf(f, "tower,274x186,194x150,%zu,%zu,%.6f,%lld\n", st.verticalSeams.size(),
                  st.horizontalSeams.size(), st.seamSeconds, (long long)st.totalCost);

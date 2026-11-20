@@ -12,7 +12,7 @@ one machine (§2.0). Each table can be regenerated from the CSV files in
 | File | Purpose |
 |---|---|
 | [`GraphCutting.h`](../../GraphCutting.h) / [`GraphCutting.cpp`](../../GraphCutting.cpp) | Flow network, Dinic, Edmonds–Karp, seam graph, vertical/horizontal seams, carve loop, seam overlay, energy |
-| [`tests/GraphCuttingTests.cpp`](../../tests/GraphCuttingTests.cpp) | Correctness tests (2 060 checks) |
+| [`tests/GraphCuttingTests.cpp`](../../tests/GraphCuttingTests.cpp) | Correctness tests (2 073 checks) |
 | [`tests/GraphCutVsTeamDPTests.cpp`](../../tests/GraphCutVsTeamDPTests.cpp) | Cross-check against the team's `DynamicProgramming.cpp` (6 474 checks) |
 | [`tests/GraphCuttingBenchmark.cpp`](../../tests/GraphCuttingBenchmark.cpp) | Timing, Dinic phase, counted-memory, full-resize and visual-comparison experiments → [`results/`](results) |
 | [`tests/GraphCuttingMemory.cpp`](../../tests/GraphCuttingMemory.cpp) + [`tools/run_graphcut_memory.py`](../../tools/run_graphcut_memory.py) | Measured peak-memory experiment (§2.3) |
@@ -28,7 +28,7 @@ configure (needs git; the first run builds OpenCV once, later runs are cached).
 # Windows (any shell, Visual Studio 2022 installed)
 cmake --preset vs2022
 cmake --build --preset vs2022-release --target gc_tests gc_vs_dp gc_bench gc_mem
-out\build\vs2022\Release\gc_tests.exe     # 2060 checks passed, 0 failed
+out\build\vs2022\Release\gc_tests.exe     # 2073 checks passed, 0 failed
 out\build\vs2022\Release\gc_vs_dp.exe     # 6474 checks passed, 0 failed
 out\build\vs2022\Release\gc_bench.exe     # writes docs/GraphCutting/results/ (~3 min)
 

@@ -23,12 +23,26 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <functional>
 #include <random>
 #include <string>
 #include <vector>
 
 static const std::string OUT = "docs/Greedy/results/";
+
+// Opens OUT + name for writing. Exits with a clear message instead of crashing
+// if the file cannot be opened (e.g. the CSV is open in Excel, which locks it).
+static FILE* OpenCsv(const std::string& name)
+{
+    FILE* f = std::fopen((OUT + name).c_str(), "w");
+    if (!f)
+    {
+        std::printf("cannot write %s%s (is it open in another program?)\n", OUT.c_str(), name.c_str());
+        std::exit(1);
+    }
+    return f;
+}
 
 // ---------------------------------------------------------------------------
 // Reference DP seam (leftmost optimum on ties) on a CV_32S cost map.
@@ -71,7 +85,7 @@ static Greedy::SeamResult RefDP(const cv::Mat& c)
 static void RandomMaps()
 {
     std::mt19937 rng(7);
-    FILE* f = std::fopen((OUT + "random_maps.csv").c_str(), "w");
+    FILE* f = OpenCsv("random_maps.csv");
     std::fprintf(f, "map,size,trials,mean_ratio,median_ratio,max_ratio,pct_optimal\n");
     std::printf("Random maps: greedy cost / optimal cost (first seam)\n");
     for (const char* kind : { "uniform", "smooth" })
@@ -229,7 +243,7 @@ static void VisualQuality(const cv::Mat& tower, const cv::Mat& synthetic)
     const Finder greedy = [](const cv::Mat& c) { return Greedy::FindVerticalSeam(c); };
     const Finder dp = RefDP;
 
-    FILE* f = std::fopen((OUT + "quality.csv").c_str(), "w");
+    FILE* f = OpenCsv("quality.csv");
     std::fprintf(f, "image,energy,method,seams,total_cost,mean_energy_removed,pct_top10_removed,pct_edge_removed,cols_touched\n");
     std::printf("Visual quality (metrics on the original image's backward energy)\n");
 

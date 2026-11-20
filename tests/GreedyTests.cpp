@@ -249,6 +249,9 @@ static void TestTieBreakingAndBorders()
     CHECK(Throws([] { FindHorizontalSeam(cv::Mat()); }));
     CHECK(Throws([] { FindVerticalSeam(cv::Mat::zeros(3, 3, CV_8U)); }));
     CHECK(Throws([] { FindHorizontalSeam(cv::Mat::zeros(3, 3, CV_32F)); }));
+    // Negative energies are rejected (same rule as DP and Graph Cut).
+    CHECK(Throws([] { FindVerticalSeam(FromRows({ { 1, -1 }, { 2, 3 } })); }));
+    CHECK(Throws([] { FindHorizontalSeam(FromRows({ { 1, -1 }, { 2, 3 } })); }));
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +518,12 @@ static void TestCarve()
     CHECK(Carve(gray, 26, 22, EnergyType::Backward, &sg, true).type() == CV_8UC1);
     CHECK(Carve(bgra, 26, 22, EnergyType::Backward, &sa, true).type() == CV_8UC4);
     CHECK(DrawSeams(gray, sg).type() == CV_8UC3 && DrawSeams(bgra, sa).type() == CV_8UC3);
+
+    // DrawSeams rejects seams that do not belong to the image.
+    const cv::Mat small(10, 10, CV_8UC3, cv::Scalar(0, 0, 0));
+    CHECK(Throws([&] { DrawSeams(small, sg); }));                       // stats from a bigger image
+    CHECK(Throws([&] { DrawSeams(cv::Mat(), sg); }));
+    CHECK(Throws([&] { DrawSeams(cv::Mat(24, 30, CV_32FC3), sg); }));   // not 8-bit
 }
 
 // ---------------------------------------------------------------------------

@@ -77,6 +77,13 @@ namespace DP
             throw std::invalid_argument(std::string(who) + ": energy map is empty");
         if (energy.type() != CV_32SC1)
             throw std::invalid_argument(std::string(who) + ": energy map must be CV_32SC1");
+        // Energies are non-negative by definition (ComputeEnergy never produces
+        // negatives); rejected here so DP, Greedy and Graph Cut accept the
+        // same inputs.
+        double minVal;
+        cv::minMaxLoc(energy, &minVal);
+        if (minVal < 0)
+            throw std::invalid_argument(std::string(who) + ": energy values must be non-negative");
     }
 
     // Builds the table without validating (callers have already checked).

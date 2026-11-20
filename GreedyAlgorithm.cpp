@@ -19,6 +19,11 @@ namespace Greedy
             throw std::invalid_argument(std::string(who) + ": energy map is empty");
         if (energy.type() != CV_32SC1)
             throw std::invalid_argument(std::string(who) + ": energy map must be CV_32SC1");
+        // Same rule as DP and Graph Cut: energies are non-negative.
+        double minVal;
+        cv::minMaxLoc(energy, &minVal);
+        if (minVal < 0)
+            throw std::invalid_argument(std::string(who) + ": energy values must be non-negative");
     }
 
     // Index of the smallest value in [0, n); ties -> lowest index.
@@ -191,14 +196,28 @@ namespace Greedy
 
     cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats)
     {
+        if (original.empty() || original.depth() != CV_8U)
+            throw std::invalid_argument("Greedy::DrawSeams: original must be a non-empty 8-bit image");
+
         cv::Mat vis;
         if (original.channels() == 1)      cv::cvtColor(original, vis, cv::COLOR_GRAY2BGR);
         else if (original.channels() == 4) cv::cvtColor(original, vis, cv::COLOR_BGRA2BGR);
         else                               vis = original.clone();
-        for (const auto& seam : stats.verticalSeams)
-            for (const cv::Point& p : seam) vis.at<cv::Vec3b>(p) = cv::Vec3b(0, 0, 255);
-        for (const auto& seam : stats.horizontalSeams)
-            for (const cv::Point& p : seam) vis.at<cv::Vec3b>(p) = cv::Vec3b(0, 255, 0);
+
+        const cv::Rect bounds(0, 0, vis.cols, vis.rows);
+        auto draw = [&](const std::vector<std::vector<cv::Point>>& seams, const cv::Vec3b& colour)
+        {
+            for (const auto& seam : seams)
+                for (const cv::Point& p : seam)
+                {
+                    if (!bounds.contains(p))
+                        throw std::invalid_argument("Greedy::DrawSeams: seam point outside the image "
+                                                    "(stats from a different image?)");
+                    vis.at<cv::Vec3b>(p) = colour;
+                }
+        };
+        draw(stats.verticalSeams, cv::Vec3b(0, 0, 255));     // red   (BGR)
+        draw(stats.horizontalSeams, cv::Vec3b(0, 255, 0));   // green
         return vis;
     }
 }

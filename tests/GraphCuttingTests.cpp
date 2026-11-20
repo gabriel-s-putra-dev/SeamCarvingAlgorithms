@@ -241,6 +241,32 @@ static void TestCarveLoop()
     threw = false;
     try { FindVerticalSeam(FromRows({ {-1, 2} })); } catch (const std::invalid_argument&) { threw = true; }
     CHECK(threw);
+
+    // Bad seams throw std::invalid_argument (like DP and Greedy) and leave the
+    // image unchanged.
+    auto throwsInvalid = [](const std::function<void()>& f) {
+        try { f(); } catch (const std::invalid_argument&) { return true; } catch (...) { return false; }
+        return false;
+    };
+    const cv::Mat e = FromRows({ { 0, 1, 2, 3 }, { 4, 5, 6, 7 }, { 8, 9, 10, 11 } });
+    cv::Mat m = e.clone();
+    CHECK(throwsInvalid([&] { RemoveVerticalSeam(m, { 0, 1 }); }));          // wrong length
+    CHECK(throwsInvalid([&] { RemoveVerticalSeam(m, { 0, 1, 4 }); }));       // out of range
+    CHECK(throwsInvalid([&] { RemoveVerticalSeam(m, { 0, -1, 0 }); }));      // negative
+    CHECK(throwsInvalid([&] { RemoveHorizontalSeam(m, { 0, 1, 2 }); }));     // wrong length
+    CHECK(throwsInvalid([&] { RemoveHorizontalSeam(m, { 0, 1, 3, 0 }); }));  // out of range
+    CHECK(m.size() == e.size() && cv::countNonZero(m != e) == 0);            // untouched
+    cv::Mat thin(3, 1, CV_32S, cv::Scalar(0)), flat(1, 3, CV_32S, cv::Scalar(0)), empty;
+    CHECK(throwsInvalid([&] { RemoveVerticalSeam(thin, { 0, 0, 0 }); }));
+    CHECK(throwsInvalid([&] { RemoveHorizontalSeam(flat, { 0, 0, 0 }); }));
+    CHECK(throwsInvalid([&] { RemoveVerticalSeam(empty, {}); }));
+
+    // DrawSeams rejects seams that do not belong to the image.
+    CHECK(DrawSeams(img, st).size() == img.size());
+    const cv::Mat small(10, 10, CV_8UC3, cv::Scalar(0, 0, 0));
+    CHECK(throwsInvalid([&] { DrawSeams(small, st); }));                     // stats from a bigger image
+    CHECK(throwsInvalid([&] { DrawSeams(cv::Mat(), st); }));
+    CHECK(throwsInvalid([&] { DrawSeams(cv::Mat(24, 30, CV_32FC3), st); })); // not 8-bit
 }
 
 // Same image as the Python prototype: first seam cost must be 2446. Then carve

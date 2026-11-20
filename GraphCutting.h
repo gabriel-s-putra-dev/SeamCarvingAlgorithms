@@ -85,16 +85,26 @@ namespace GraphCut
     //   Backward: |Sobel_x| + |Sobel_y| on the grayscale image.
     //   Forward : the brief's SIMPLIFIED per-pixel forward cost
     //             |I[i][j+1] - I[i][j-1]| (not the transition-dependent version).
+    //             Meant for VERTICAL seams only; see the note at FindHorizontalSeam.
     cv::Mat ComputeEnergy(const cv::Mat& img, EnergyType type = EnergyType::Backward);
 
     // Build the flow network for a vertical seam (exposed for tests / analysis).
     FlowNetwork BuildSeamGraph(const cv::Mat& cost, int64_t& s, int64_t& t);
 
-    // Optimal seam on a CV_32S cost map.
+    // Optimal seam on a non-empty CV_32SC1 cost map with no negative values
+    // (otherwise std::invalid_argument).
+    //
+    // NOTE on FORWARD energy: it compares left and right neighbours, so it is
+    // the right cost for VERTICAL seams only. For a horizontal seam with
+    // forward energy use FindVerticalSeam(ComputeEnergy(img.t(), Forward)) on
+    // the transposed image (Carve does this). Backward energy works either way.
     SeamResult FindVerticalSeam(const cv::Mat& cost, MaxFlowAlgorithm algo = MaxFlowAlgorithm::Dinic);
     SeamResult FindHorizontalSeam(const cv::Mat& cost, MaxFlowAlgorithm algo = MaxFlowAlgorithm::Dinic);
 
     // Remove one pixel per row (vertical) / per column (horizontal). Any Mat type.
+    // Throws std::invalid_argument if img is empty or too small (fewer than 2
+    // columns / rows), the seam has the wrong length, or an index is out of
+    // range. img is left unchanged when it throws.
     void RemoveVerticalSeam(cv::Mat& img, const std::vector<int>& seam);
     void RemoveHorizontalSeam(cv::Mat& img, const std::vector<int>& seam);
 
@@ -116,5 +126,7 @@ namespace GraphCut
                   CarveStats* stats = nullptr, bool recordSeams = false);
 
     // Original image with all removed seams drawn (red = vertical, green = horizontal).
+    // Throws std::invalid_argument if original is empty / not 8-bit, or a seam
+    // point lies outside it (stats from a different image).
     cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats);
 }
