@@ -1,15 +1,43 @@
-// Correctness tests for step (c): remove the seam and repeat
-// (RemoveVerticalSeam, RemoveHorizontalSeam, Carve, DrawSeams), through the DP
-// module. The removal, loop and overlay live in SeamCarving.cpp and are shared
-// with Greedy and Graph Cut.
-// Build and run from the repo root:
-//   cmake --build --preset vs2022-release --target carve_tests
-//   out\build\vs2022\Release\carve_tests.exe     (or: ctest --preset vs2022-release)
-// or with g++:
-//   g++ -std=c++14 -O2 -I. tests/CarveTests.cpp SeamCarving.cpp DynamicProgramming.cpp GraphCutting.cpp -o carve_tests `pkg-config --cflags --libs opencv4`
-//
-// GraphCutting.cpp is linked to check that DP::Carve and GraphCut::Carve give
-// pixel-identical results: both return the leftmost optimal seam.
+/*!************************************************************************
+\file CarveTests.cpp
+\author Gabriel Sebastian Putra
+\par DP email: gabrielsebastian.p@digipen.edu
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This source file contains the tests for step (c), removing the seam and
+repeating.
+
+Correctness tests for step (c): remove the seam and repeat
+(RemoveVerticalSeam, RemoveHorizontalSeam, Carve, DrawSeams), through the DP
+module. The removal, loop and overlay live in SeamCarving.cpp and are shared
+with Greedy and Graph Cut.
+Build and run from the repo root:
+  cmake --build --preset vs2022-release --target carve_tests
+  out\build\vs2022\Release\carve_tests.exe     (or: ctest --preset vs2022-release)
+or with g++:
+  g++ -std=c++14 -O2 -I. tests/CarveTests.cpp SeamCarving.cpp DynamicProgramming.cpp GraphCutting.cpp -o carve_tests `pkg-config --cflags --libs opencv4`
+
+GraphCutting.cpp is linked to check that DP::Carve and GraphCut::Carve give
+pixel-identical results: both return the leftmost optimal seam.
+- SameMat(a, b)
+checks whether two matrices are identical
+- MakeU8(rows, cols, v)
+builds a small 8-bit image from a list of values
+- RandomBGR(rows, cols, rng)
+builds a random colour image
+- LoadImage(path)
+reads a sample image, with a hint if it is missing
+- TestRemoveVertical() ... TestForwardCarve()
+the nine test groups listed in main
+- Timing()
+prints how long a full carve of the tower image takes
+- main()
+runs every test and prints the summary
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "Check.h"
 #include "DynamicProgramming.h"
 #include "GraphCutting.h"
@@ -25,6 +53,22 @@
 #include <string>
 #include <vector>
 
+/************************************************************************/
+/*!
+  \brief
+	checks whether two matrices have the same size, type and values (any
+	channel count)
+  \param a
+  const cv::Mat&
+	The first matrix
+  \param b
+  const cv::Mat&
+	The second matrix
+  \return bool
+  boolean
+  returns true if the matrices are identical, false otherwise
+*/
+/************************************************************************/
 static bool SameMat(const cv::Mat& a, const cv::Mat& b)
 {
     if (a.size() != b.size() || a.type() != b.type()) return false;
@@ -34,6 +78,24 @@ static bool SameMat(const cv::Mat& a, const cv::Mat& b)
     return cv::countNonZero(diff) == 0;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	builds a single-channel 8-bit image from a flat row-major list of values
+  \param rows
+  int
+	The number of rows
+  \param cols
+  int
+	The number of columns
+  \param v
+  const std::vector<int>&
+	The rows * cols pixel values, row by row
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_8UC1 image
+*/
+/************************************************************************/
 static cv::Mat MakeU8(int rows, int cols, const std::vector<int>& v)
 {
     cv::Mat m(rows, cols, CV_8UC1);
@@ -42,6 +104,24 @@ static cv::Mat MakeU8(int rows, int cols, const std::vector<int>& v)
     return m;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	builds a colour image with uniformly random pixel values
+  \param rows
+  int
+	The number of rows
+  \param cols
+  int
+	The number of columns
+  \param rng
+  std::mt19937&
+	The random number generator to draw the pixel values from
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_8UC3 image
+*/
+/************************************************************************/
 static cv::Mat RandomBGR(int rows, int cols, std::mt19937& rng)
 {
     std::uniform_int_distribution<int> d(0, 255);
@@ -53,6 +133,19 @@ static cv::Mat RandomBGR(int rows, int cols, std::mt19937& rng)
     return img;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	reads a colour image and prints a hint to run from the repository root
+	if it cannot be read
+  \param path
+  const char*
+	The path of the image
+  \return cv::Mat
+  OpenCV matrix
+  returns the image, or an empty matrix if it could not be read
+*/
+/************************************************************************/
 static cv::Mat LoadImage(const char* path)
 {
     const cv::Mat img = cv::imread(path, cv::IMREAD_COLOR);
@@ -60,9 +153,12 @@ static cv::Mat LoadImage(const char* path)
     return img;
 }
 
-// ---------------------------------------------------------------------------
-// 1. RemoveVerticalSeam on hand-made examples.
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	1. RemoveVerticalSeam on hand-made examples.
+*/
+/************************************************************************/
 static void TestRemoveVertical()
 {
     // 1  2  3  4          2  3  4
@@ -101,9 +197,12 @@ static void TestRemoveVertical()
     CHECK(m.at<cv::Vec2i>(1, 0) == cv::Vec2i(0, 1) && m.at<cv::Vec2i>(1, 1) == cv::Vec2i(2, 1));
 }
 
-// ---------------------------------------------------------------------------
-// 2. RemoveHorizontalSeam on a hand-made example.
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	2. RemoveHorizontalSeam on a hand-made example.
+*/
+/************************************************************************/
 static void TestRemoveHorizontal()
 {
     // 1 2 3                         4 2 3
@@ -126,9 +225,12 @@ static void TestRemoveHorizontal()
     CHECK(SameMat(h, back));
 }
 
-// ---------------------------------------------------------------------------
-// 3. Invalid removals throw instead of corrupting memory.
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	3. Invalid removals throw instead of corrupting memory.
+*/
+/************************************************************************/
 static void TestInvalidRemoval()
 {
     const cv::Mat img = MakeU8(3, 4, { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 });
@@ -148,9 +250,12 @@ static void TestInvalidRemoval()
     CHECK(SameMat(m, img));
 }
 
-// ---------------------------------------------------------------------------
-// 4. Carve output sizes and argument checks.
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	4. Carve output sizes and argument checks.
+*/
+/************************************************************************/
 static void TestCarveSizes()
 {
     std::mt19937 rng(4);
@@ -180,14 +285,17 @@ static void TestCarveSizes()
     CHECK(DP::Carve(bgra, 14, 11).size() == cv::Size(14, 11));
 }
 
-// ---------------------------------------------------------------------------
-// 5. Carve does exactly "energy -> seam -> remove" with the energy RECOMPUTED
-//    from the current image at every step.
-//    (Backward energy only: |Gx| + |Gy| is symmetric, so the energy of the
-//    transposed image is the transpose of the energy and FindHorizontalSeam
-//    gives the same seam Carve finds on the transposed image. The simplified
-//    forward energy only looks left/right, so it is not symmetric.)
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	5. Carve does exactly "energy -> seam -> remove" with the energy RECOMPUTED
+	   from the current image at every step.
+	   (Backward energy only: |Gx| + |Gy| is symmetric, so the energy of the
+	   transposed image is the transpose of the energy and FindHorizontalSeam
+	   gives the same seam Carve finds on the transposed image. The simplified
+	   forward energy only looks left/right, so it is not symmetric.)
+*/
+/************************************************************************/
 static void TestCarveMatchesManualLoop()
 {
     std::mt19937 rng(5);
@@ -222,10 +330,13 @@ static void TestCarveMatchesManualLoop()
     CHECK(st.verticalSeams.empty() && st.horizontalSeams.empty());   // recordSeams = false
 }
 
-// ---------------------------------------------------------------------------
-// 6. Recorded seams are in original-image coordinates, never overlap, and
-//    account for every removed pixel. DrawSeams marks exactly those pixels.
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	6. Recorded seams are in original-image coordinates, never overlap, and
+	   account for every removed pixel. DrawSeams marks exactly those pixels.
+*/
+/************************************************************************/
 static void TestRecordedSeams()
 {
     std::mt19937 rng(6);
@@ -278,10 +389,13 @@ static void TestRecordedSeams()
     CHECK(Throws([&] { DP::DrawSeams(out, st); }));
 }
 
-// ---------------------------------------------------------------------------
-// 7. Reference totals (docs/GraphCutting/README.md §3.1, same energy, same
-//    leftmost tie-break).
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	7. Reference totals (docs/GraphCutting/README.md §3.1, same energy, same
+	   leftmost tie-break).
+*/
+/************************************************************************/
 static void TestReferenceTotals()
 {
     const cv::Mat tower = LoadImage("images/tower.png");
@@ -301,9 +415,12 @@ static void TestReferenceTotals()
                 a.totalCost, b.totalCost, c.totalCost);
 }
 
-// ---------------------------------------------------------------------------
-// 8. DP and Graph Cut produce pixel-identical results (both energies).
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	8. DP and Graph Cut produce pixel-identical results (both energies).
+*/
+/************************************************************************/
 static void TestMatchesGraphCut()
 {
     std::mt19937 rng(8);
@@ -329,9 +446,12 @@ static void TestMatchesGraphCut()
         }
 }
 
-// ---------------------------------------------------------------------------
-// 9. Forward energy carving.
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	9. Forward energy carving.
+*/
+/************************************************************************/
 static void TestForwardCarve()
 {
     std::mt19937 rng(9);
@@ -345,6 +465,14 @@ static void TestForwardCarve()
     CHECK(nonNegative);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	carves the tower image to 194x150 with backward energy and prints the
+	total time, the time spent finding seams and the total energy removed.
+	Not a check; skipped if the image cannot be read.
+*/
+/************************************************************************/
 static void Timing()
 {
     const cv::Mat tower = cv::imread("images/tower.png", cv::IMREAD_COLOR);
@@ -357,6 +485,15 @@ static void Timing()
                 tower.cols, tower.rows, st.seamCosts.size(), total, st.seamSeconds);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	runs every test group, prints the summary, then prints the timing
+  \return int
+  integer
+  returns 0 if every check passed, 1 otherwise
+*/
+/************************************************************************/
 int main()
 {
     const int result = RunTests({

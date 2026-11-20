@@ -1,21 +1,50 @@
+/*!************************************************************************
+\file SeamCarving.h
+\author Gabriel Sebastian Putra
+\par DP email: gabrielsebastian.p@digipen.edu
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This header file contains the declarations for the seam-carving pipeline
+shared by all three methods.
+
+Shared seam-carving pipeline, used by all three seam-finding methods
+(DynamicProgramming, GreedyAlgorithm, GraphCutting):
+
+  * the energy map (step a),
+  * removing a seam from an image (step c),
+  * the "remove the seam and repeat" loop (CarveWith), which takes the
+    seam finder as a parameter, so DP, Greedy and Graph Cut only differ in
+    how they choose each seam,
+  * the statistics of a carve (CarveStats) and the seam overlay (DrawSeams).
+
+Because every method uses this one copy, all three are compared on exactly
+the same energy map, the same removal and the same carving order.
+
+OpenCV is only used for colour conversion, the Sobel filter and transpose;
+no content-aware resizing function from any library is used.
+- EnergyType
+Backward (Sobel) or Forward energy
+- ComputeEnergy(img, type)
+returns the CV_32SC1 energy map of an image
+- RemoveVerticalSeam(img, seam)
+removes one pixel per row
+- RemoveHorizontalSeam(img, seam)
+removes one pixel per column
+- CarveStats
+times, seam costs and recorded seams of a carve
+- VerticalSeamFinder
+a function that finds a vertical seam on an energy map
+- CarveWith(img, newWidth, newHeight, energy, findSeam, stats, recordSeams, who)
+shrinks an image to a target size with the given seam finder
+- DrawSeams(original, stats)
+draws all recorded seams on a copy of the original image
+**************************************************************************/
+
 #pragma once
-// ============================================================================
-// Shared seam-carving pipeline, used by all three seam-finding methods
-// (DynamicProgramming, GreedyAlgorithm, GraphCutting):
-//
-//   * the energy map (step a),
-//   * removing a seam from an image (step c),
-//   * the "remove the seam and repeat" loop (CarveWith), which takes the
-//     seam finder as a parameter, so DP, Greedy and Graph Cut only differ in
-//     how they choose each seam,
-//   * the statistics of a carve (CarveStats) and the seam overlay (DrawSeams).
-//
-// Because every method uses this one copy, all three are compared on exactly
-// the same energy map, the same removal and the same carving order.
-//
-// OpenCV is only used for colour conversion, the Sobel filter and transpose;
-// no content-aware resizing function from any library is used.
-// ============================================================================
+
+// ----- Headers ------------------------------------------------------- //
 #include <opencv2/core.hpp>
 
 #include <cstdint>

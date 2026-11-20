@@ -1,21 +1,52 @@
-// Seam-cost and visual-quality analysis for the Greedy write-up (Person B).
-// Complements tests/GreedyBenchmark.cpp (timing, first-seam cost, side-by-side
-// results). Build and run from the repository root:
-//   Windows:       cmake --build --preset vs2022-release --target greedy_analysis
-//                  out\build\vs2022\Release\greedy_analysis.exe
-//   Linux / macOS: cmake --build --preset unix-release --target greedy_analysis
-//                  out/build/unix-release/greedy_analysis
-// Then draw the charts:  python tools/plot_greedy_analysis.py
-//
-// Outputs (docs/Greedy/results/):
-//   random_maps.csv          greedy / optimal seam cost on random cost maps, by size
-//   quality.csv              how much "important" content each method removes
-//   zoom_tower.png           the tower region of each result, enlarged 2x
-//   compare_tower_forward.png  Greedy vs DP with the forward energy
-//
-// "Optimal" is the team's DP (DynamicProgramming.cpp), which gives the same
-// cost as graph cut (see tests/GraphCutVsTeamDPTests.cpp). Both methods carve
-// with the shared SeamCarving::CarveWith loop via their module's Carve.
+/*!************************************************************************
+\file GreedyAnalysis.cpp
+\author XIONG YANG
+\par DP email: xiong.yang@digipen.edu
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+Seam-cost and visual-quality analysis for the Greedy write-up (Person B).
+Complements tests/GreedyBenchmark.cpp (timing, first-seam cost, side-by-side
+results). Build and run from the repository root:
+  Windows:       cmake --build --preset vs2022-release --target greedy_analysis
+                 out\build\vs2022\Release\greedy_analysis.exe
+  Linux / macOS: cmake --build --preset unix-release --target greedy_analysis
+                 out/build/unix-release/greedy_analysis
+Then draw the charts:  python tools/plot_greedy_analysis.py
+
+Outputs (docs/Greedy/results/):
+  random_maps.csv          greedy / optimal seam cost on random cost maps, by size
+  quality.csv              how much "important" content each method removes
+  zoom_tower.png           the tower region of each result, enlarged 2x
+  compare_tower_forward.png  Greedy vs DP with the forward energy
+
+"Optimal" is the team's DP (DynamicProgramming.cpp), which gives the same
+cost as graph cut (see tests/GraphCutVsTeamDPTests.cpp). Both methods carve
+with the shared SeamCarving::CarveWith loop via their module's Carve.
+- OpenCsv(name)
+opens a results CSV for writing or exits with a message
+- RandomMaps()
+greedy / optimal seam cost on random cost maps
+- CarveVertical(img, k, energy, greedy)
+removes k vertical seams with Greedy or DP
+- Percentile(energy, pct)
+returns an energy percentile
+- Quality(f, image, energyName, method, original, r)
+writes the quality metrics of one carve
+- Label(img, text)
+adds a caption above an image
+- SideBySide(images, gap)
+places images next to each other
+- Zoom(img, roi, scale)
+crops and enlarges part of an image
+- VisualQuality(tower, synthetic)
+compares what Greedy and DP remove and saves the figures
+- main()
+runs both analyses
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "DynamicProgramming.h"
 #include "GreedyAlgorithm.h"
 
@@ -32,8 +63,19 @@
 
 static const std::string OUT = "docs/Greedy/results/";
 
-// Opens OUT + name for writing. Exits with a clear message instead of crashing
-// if the file cannot be opened (e.g. the CSV is open in Excel, which locks it).
+/************************************************************************/
+/*!
+  \brief
+	Opens OUT + name for writing. Exits with a clear message instead of crashing
+	if the file cannot be opened (e.g. the CSV is open in Excel, which locks it).
+  \param name
+  const std::string&
+	The file name inside docs/Greedy/results/
+  \return FILE*
+  C file handle
+  returns the open file (the program exits if it cannot be opened)
+*/
+/************************************************************************/
 static FILE* OpenCsv(const std::string& name)
 {
     FILE* f = std::fopen((OUT + name).c_str(), "w");
@@ -48,10 +90,20 @@ static FILE* OpenCsv(const std::string& name)
 // ---------------------------------------------------------------------------
 // 1. Random cost maps: how far from optimal is one greedy seam?
 // ---------------------------------------------------------------------------
-// Two kinds of map:
-//   uniform - every pixel independent in [0, 255]: no structure at all;
-//   smooth  - uniform noise blurred, so cheap pixels cluster in regions like
-//             in a real energy map.
+
+/************************************************************************/
+/*!
+  \brief
+	for each map kind and sizes 4 to 256, generates 300 random maps,
+	compares the first greedy seam's cost with the optimal (team DP) cost,
+	and writes the mean, median and maximum ratio and the share of optimal
+	seams to random_maps.csv.
+	Two kinds of map:
+	  uniform - every pixel independent in [0, 255]: no structure at all;
+	  smooth  - uniform noise blurred, so cheap pixels cluster in regions like
+	            in a real energy map.
+*/
+/************************************************************************/
 static void RandomMaps()
 {
     std::mt19937 rng(7);
@@ -102,8 +154,29 @@ struct Carved
     SeamCarving::CarveStats st;   // st.verticalSeams: removed seams, original coordinates
 };
 
-// Remove k vertical seams with Greedy or DP (both run the shared carving loop,
-// SeamCarving::CarveWith, and record each seam in original-image coordinates).
+/************************************************************************/
+/*!
+  \brief
+	Remove k vertical seams with Greedy or DP (both run the shared carving loop,
+	SeamCarving::CarveWith, and record each seam in original-image coordinates).
+  \param img
+  const cv::Mat&
+	The image to carve
+  \param k
+  int
+	The number of vertical seams to remove
+  \param energy
+  SeamCarving::EnergyType
+	The energy to use
+  \param greedy
+  bool
+	true to use Greedy, false to use DP
+  \return Carved
+  carve result
+  returns the carved image and its statistics, including the recorded
+  seams
+*/
+/************************************************************************/
 static Carved CarveVertical(const cv::Mat& img, int k, SeamCarving::EnergyType energy, bool greedy)
 {
     Carved r;
@@ -112,7 +185,21 @@ static Carved CarveVertical(const cv::Mat& img, int k, SeamCarving::EnergyType e
     return r;
 }
 
-// Energy value at the given percentile (0..100) of the map.
+/************************************************************************/
+/*!
+  \brief
+	Energy value at the given percentile (0..100) of the map.
+  \param energy
+  const cv::Mat&
+	The CV_32SC1 energy map
+  \param pct
+  double
+	The percentile, 0 to 100
+  \return int
+  integer
+  returns the energy value at that percentile
+*/
+/************************************************************************/
 static int Percentile(const cv::Mat& energy, double pct)
 {
     std::vector<int> v(energy.begin<int>(), energy.end<int>());
@@ -121,17 +208,41 @@ static int Percentile(const cv::Mat& energy, double pct)
     return v[idx];
 }
 
-// Quality metrics for a set of removed pixels, measured on the ORIGINAL image's
-// backward energy (so all methods and both energy types use the same yardstick):
-//   mean_energy   - average original energy of the removed pixels;
-//   pct_top10     - % of removed pixels that were in the top 10 % of energy
-//                   (edges / detail: the content seam carving should keep);
-//   pct_edge      - % of removed pixels on a strong edge, energy >= 100. For a
-//                   step edge Sobel gives |Gx| = 4h, so 100 is a step of ~25
-//                   grey levels. Unlike pct_top10 this does not depend on how
-//                   much of the image is flat (the synthetic image is ~90 % flat);
-//   cols_touched  - how many original columns lost at least one pixel. Low =
-//                   seams stack in a few low-energy bands; high = spread out.
+/************************************************************************/
+/*!
+  \brief
+	Quality metrics for a set of removed pixels, measured on the ORIGINAL image's
+	backward energy (so all methods and both energy types use the same yardstick):
+	  mean_energy   - average original energy of the removed pixels;
+	  pct_top10     - % of removed pixels that were in the top 10 % of energy
+	                  (edges / detail: the content seam carving should keep);
+	  pct_edge      - % of removed pixels on a strong edge, energy >= 100. For a
+	                  step edge Sobel gives |Gx| = 4h, so 100 is a step of ~25
+	                  grey levels. Unlike pct_top10 this does not depend on how
+	                  much of the image is flat (the synthetic image is ~90 % flat);
+	  cols_touched  - how many original columns lost at least one pixel. Low =
+	                  seams stack in a few low-energy bands; high = spread out.
+	Writes one CSV row and prints one summary line.
+  \param f
+  FILE*
+	The open quality.csv file
+  \param image
+  const std::string&
+	The image name
+  \param energyName
+  const char*
+	The energy used for carving
+  \param method
+  const char*
+	The method name (Greedy or DP)
+  \param original
+  const cv::Mat&
+	The original image
+  \param r
+  const Carved&
+	The carve result with its recorded seams
+*/
+/************************************************************************/
 static void Quality(FILE* f, const std::string& image, const char* energyName, const char* method,
                     const cv::Mat& original, const Carved& r)
 {
@@ -160,6 +271,21 @@ static void Quality(FILE* f, const std::string& image, const char* energyName, c
                 (long long)edge, cols);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	adds a white strip with a caption above an image
+  \param img
+  const cv::Mat&
+	The image to label
+  \param text
+  const std::string&
+	The caption
+  \return cv::Mat
+  OpenCV matrix
+  returns the image with the caption strip on top
+*/
+/************************************************************************/
 static cv::Mat Label(const cv::Mat& img, const std::string& text)
 {
     cv::Mat pad(22, img.cols, img.type(), cv::Scalar(255, 255, 255));
@@ -169,6 +295,21 @@ static cv::Mat Label(const cv::Mat& img, const std::string& text)
     return out;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	places images next to each other on a white canvas, top-aligned
+  \param images
+  const std::vector<cv::Mat>&
+	The CV_8UC3 images, left to right
+  \param gap
+  int
+	The number of white pixels between neighbouring images, default 8
+  \return cv::Mat
+  OpenCV matrix
+  returns the combined CV_8UC3 image
+*/
+/************************************************************************/
 static cv::Mat SideBySide(const std::vector<cv::Mat>& images, int gap = 8)
 {
     int h = 0, w = 0;
@@ -183,6 +324,25 @@ static cv::Mat SideBySide(const std::vector<cv::Mat>& images, int gap = 8)
     return canvas;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	crops a region of an image (clipped to the image) and enlarges it with
+	nearest-neighbour scaling
+  \param img
+  const cv::Mat&
+	The image
+  \param roi
+  const cv::Rect&
+	The region to crop
+  \param scale
+  int
+	The enlargement factor
+  \return cv::Mat
+  OpenCV matrix
+  returns the enlarged crop
+*/
+/************************************************************************/
 static cv::Mat Zoom(const cv::Mat& img, const cv::Rect& roi, int scale)
 {
     cv::Mat z;
@@ -190,6 +350,20 @@ static cv::Mat Zoom(const cv::Mat& img, const cv::Rect& roi, int scale)
     return z;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	carves the tower (80 seams) and synthetic (50 seams) images with Greedy
+	and DP, both energies, writes the quality metrics to quality.csv, and
+	saves zoom_tower.png and compare_tower_forward.png
+  \param tower
+  const cv::Mat&
+	The tower sample image
+  \param synthetic
+  const cv::Mat&
+	The synthetic sample image
+*/
+/************************************************************************/
 static void VisualQuality(const cv::Mat& tower, const cv::Mat& synthetic)
 {
     FILE* f = OpenCsv("quality.csv");
@@ -226,6 +400,17 @@ static void VisualQuality(const cv::Mat& tower, const cv::Mat& synthetic)
     std::fclose(f);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	loads the sample images, checks that the results folder is writable,
+	then runs the random-map and visual-quality analyses
+  \return int
+  integer
+  returns 0 on success, 1 if the images or the results folder cannot be
+  used
+*/
+/************************************************************************/
 int main()
 {
     const cv::Mat tower = cv::imread("images/tower.png");

@@ -1,37 +1,65 @@
+/*!************************************************************************
+\file GraphCutting.h
+\author GYQ-SIT
+\par DP email: 2301516@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This header file contains the declarations for seam carving by Graph
+Cut.
+
+Seam carving by Graph Cut (minimum s-t cut solved with max-flow).
+
+Seam finding is reformulated as a minimum s-t cut and solved with max-flow
+(Dinic or Edmonds-Karp, both implemented from scratch). OpenCV is only used
+for image I/O, colour conversion and the Sobel filter.
+
+The energy map, seam removal, the carving loop and the seam overlay are
+shared with DP and Greedy (SeamCarving.h); this file only finds seams.
+
+Graph for a VERTICAL seam on an m x n cost map c[i][j]
+  nodes : one per pixel (i, j), j = 0..n-1, plus a VIRTUAL column j = n,
+          plus source s and sink t                    -> V = m(n+1) + 2
+  s -> (i, 0)            capacity INF  (first column is on the source side)
+  (i, n) -> t            capacity INF  (virtual column is on the sink side)
+  (i, j) -> (i, j+1)     capacity c[i][j]   "cutting it removes pixel (i, j)"
+  (i, j+1) -> (i, j)     capacity INF       backward edge
+  (i, j) -> (i-1, j-1)   capacity INF       diagonal edge
+  (i, j) -> (i+1, j-1)   capacity INF       diagonal edge
+
+Why the virtual column: if the last real column were wired straight to t
+(as in the brief), the cut could never fall to its right, so pixels in the
+last column could never be removed. With the extra column, every column is
+removable and the seam space is exactly the same as the DP's.
+
+Why every finite cut is exactly one connected seam (S = source side):
+  * backward INF edges: (i, j+1) in S  =>  (i, j) in S, so row i of S is a
+    prefix {0..b_i} and exactly ONE forward edge per row is cut;
+  * diagonal INF edges: (i, b_i) in S  =>  (i-1, b_i-1) and (i+1, b_i-1)
+    in S, so |b_i - b_{i+1}| <= 1 (8-connected seam);
+  * cut capacity = sum_i c[i][b_i] = seam cost. By the max-flow min-cut
+    theorem, max flow = min cut = optimal seam cost.
+- FlowNetwork
+residual graph in CSR form with the Edmonds-Karp and Dinic max-flow
+solvers
+- SeamResult
+a graph-cut seam, its cost, the flow value and solver counters
+- BuildSeamGraph(cost, s, t)
+builds the flow network for a vertical seam
+- FindVerticalSeam(cost, algo)
+returns the optimal vertical seam from a minimum s-t cut
+- FindHorizontalSeam(cost, algo)
+returns the optimal horizontal seam on the transposed cost map
+- Carve(img, newWidth, newHeight, algo, energy, stats, recordSeams)
+shrinks an image by repeatedly removing the graph-cut seam
+- EnergyType, ComputeEnergy, RemoveVerticalSeam, RemoveHorizontalSeam, CarveStats, DrawSeams
+re-exported from SeamCarving.h
+**************************************************************************/
+
 #pragma once
-// ============================================================================
-// Seam carving by Graph Cut (minimum s-t cut solved with max-flow).
-//
-// Seam finding is reformulated as a minimum s-t cut and solved with max-flow
-// (Dinic or Edmonds-Karp, both implemented from scratch). OpenCV is only used
-// for image I/O, colour conversion and the Sobel filter.
-//
-// The energy map, seam removal, the carving loop and the seam overlay are
-// shared with DP and Greedy (SeamCarving.h); this file only finds seams.
-//
-// Graph for a VERTICAL seam on an m x n cost map c[i][j]
-//   nodes : one per pixel (i, j), j = 0..n-1, plus a VIRTUAL column j = n,
-//           plus source s and sink t                    -> V = m(n+1) + 2
-//   s -> (i, 0)            capacity INF  (first column is on the source side)
-//   (i, n) -> t            capacity INF  (virtual column is on the sink side)
-//   (i, j) -> (i, j+1)     capacity c[i][j]   "cutting it removes pixel (i, j)"
-//   (i, j+1) -> (i, j)     capacity INF       backward edge
-//   (i, j) -> (i-1, j-1)   capacity INF       diagonal edge
-//   (i, j) -> (i+1, j-1)   capacity INF       diagonal edge
-//
-// Why the virtual column: if the last real column were wired straight to t
-// (as in the brief), the cut could never fall to its right, so pixels in the
-// last column could never be removed. With the extra column, every column is
-// removable and the seam space is exactly the same as the DP's.
-//
-// Why every finite cut is exactly one connected seam (S = source side):
-//   * backward INF edges: (i, j+1) in S  =>  (i, j) in S, so row i of S is a
-//     prefix {0..b_i} and exactly ONE forward edge per row is cut;
-//   * diagonal INF edges: (i, b_i) in S  =>  (i-1, b_i-1) and (i+1, b_i-1)
-//     in S, so |b_i - b_{i+1}| <= 1 (8-connected seam);
-//   * cut capacity = sum_i c[i][b_i] = seam cost. By the max-flow min-cut
-//     theorem, max flow = min cut = optimal seam cost.
-// ============================================================================
+
+// ----- Headers ------------------------------------------------------- //
 #include "SeamCarving.h"
 
 #include <opencv2/core.hpp>
@@ -73,9 +101,47 @@ namespace GraphCut
         // residual graph = source side S of a minimum cut.
         std::vector<uint8_t> SourceSide(int64_t s) const;
 
+        /************************************************************************/
+        /*!
+          \brief
+        	gets the number of nodes in the flow network
+          \return int64_t
+          64-bit integer
+          returns the number of nodes, V
+        */
+        /************************************************************************/
         int64_t NumNodes() const { return n; }
+        /************************************************************************/
+        /*!
+          \brief
+        	gets the number of arcs in the residual graph (two per logical edge)
+          \return int64_t
+          64-bit integer
+          returns the number of arcs
+        */
+        /************************************************************************/
         int64_t NumArcs() const { return static_cast<int64_t>(to.size()); }
+        /************************************************************************/
+        /*!
+          \brief
+        	gets how many augmenting paths max-flow has pushed flow along on this
+        	network
+          \return int64_t
+          64-bit integer
+          returns the number of augmentations
+        */
+        /************************************************************************/
         int64_t Augmentations() const { return augmentations; }
+        /************************************************************************/
+        /*!
+          \brief
+        	gets how many Dinic phases (level graphs built by BFS) max-flow has used
+        	on this network; stays 0 for Edmonds-Karp
+          \return int64_t
+          64-bit integer
+          returns the number of phases
+        */
+        /************************************************************************/
         int64_t Phases() const { return phases; }
         size_t MemoryBytes() const;   // CSR arrays + solver work arrays
 

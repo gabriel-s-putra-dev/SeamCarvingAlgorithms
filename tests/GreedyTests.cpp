@@ -1,30 +1,59 @@
-// Correctness tests for GreedyAlgorithm.cpp (Person B: check and explain).
-// No test framework (shared helpers in tests/Check.h). Build from the repo root:
-//   Windows:       cmake --preset vs2022
-//                  cmake --build --preset vs2022-release --target greedy_tests
-//                  out\build\vs2022\Release\greedy_tests.exe
-//   Linux / macOS: cmake --preset unix-release
-//                  cmake --build --preset unix-release --target greedy_tests
-//                  out/build/unix-release/greedy_tests
-// Run it from the repository root so images/ is found.
-//
-// What is checked:
-//   1. Hand-checked maps: seams and costs worked out on paper (see README §3.1).
-//   2. Tie-breaking and image borders, exactly as documented in GreedyAlgorithm.h.
-//   3. The "greedy trap": a cheap start pixel that leads into an expensive
-//      region, so greedy pays 80x the optimum.
-//   4. Valid seams on 2 000 random maps: right length, inside the image,
-//      8-connected, cost = sum of the pixels, every step is the locally
-//      cheapest neighbour, and cost >= the optimal (DP) cost.
-//   5. The optimum used for comparison is itself checked against brute force
-//      (every one of the up to n * 3^(m-1) seams enumerated on tiny maps).
-//   6. Seam removal (vertical and horizontal, any Mat type) and its errors.
-//   7. The Carve loop: output size, seam bookkeeping, every original pixel
-//      removed at most once, stats add up, Carve == manual find/remove loop.
-//   8. DrawSeams colours exactly the removed pixels.
-//   9. The tower image: greedy >= optimal at every one of 80 carving steps.
-// The "optimal" yardstick is the team's DP (TeamDPCost in tests/Check.h);
-// GraphCuttingTests.cpp checks that graph cut gives the same optimum.
+/*!************************************************************************
+\file GreedyTests.cpp
+\author XIONG YANG
+\par DP email: xiong.yang@digipen.edu
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+Correctness tests for GreedyAlgorithm.cpp (Person B: check and explain).
+No test framework (shared helpers in tests/Check.h). Build from the repo root:
+  Windows:       cmake --preset vs2022
+                 cmake --build --preset vs2022-release --target greedy_tests
+                 out\build\vs2022\Release\greedy_tests.exe
+  Linux / macOS: cmake --preset unix-release
+                 cmake --build --preset unix-release --target greedy_tests
+                 out/build/unix-release/greedy_tests
+Run it from the repository root so images/ is found.
+
+What is checked:
+  1. Hand-checked maps: seams and costs worked out on paper (see README §3.1).
+  2. Tie-breaking and image borders, exactly as documented in GreedyAlgorithm.h.
+  3. The "greedy trap": a cheap start pixel that leads into an expensive
+     region, so greedy pays 80x the optimum.
+  4. Valid seams on 2 000 random maps: right length, inside the image,
+     8-connected, cost = sum of the pixels, every step is the locally
+     cheapest neighbour, and cost >= the optimal (DP) cost.
+  5. The optimum used for comparison is itself checked against brute force
+     (every one of the up to n * 3^(m-1) seams enumerated on tiny maps).
+  6. Seam removal (vertical and horizontal, any Mat type) and its errors.
+  7. The Carve loop: output size, seam bookkeeping, every original pixel
+     removed at most once, stats add up, Carve == manual find/remove loop.
+  8. DrawSeams colours exactly the removed pixels.
+  9. The tower image: greedy >= optimal at every one of 80 carving steps.
+The "optimal" yardstick is the team's DP (TeamDPCost in tests/Check.h);
+GraphCuttingTests.cpp checks that graph cut gives the same optimum.
+- RandomMap(rng, m, n, maxValue)
+builds a random cost map
+- BruteForce(c, i, j, sum, best, count)
+enumerates every seam from (i, j) down
+- BruteForceMin(c, count)
+returns the optimal seam cost by brute force
+- ValidSeam(seam, rows, cols)
+checks the shape of a vertical seam
+- SumAlong(c, seam)
+adds up the costs along a seam
+- FollowsGreedyRule(c, seam)
+checks a seam against an independent greedy rule
+- TestHandCheckedMaps() ... TestTowerImage()
+the seven test groups listed in main
+- TestImage()
+builds the image used by TestCarve
+- main()
+runs every test and prints the summary
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "Check.h"
 #include "DynamicProgramming.h"
 #include "GreedyAlgorithm.h"
@@ -46,6 +75,28 @@ using namespace Greedy;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	builds a cost map with random values in [0, maxValue)
+  \param rng
+  std::mt19937&
+	The random number generator
+  \param m
+  int
+	The number of rows
+  \param n
+  int
+	The number of columns
+  \param maxValue
+  int
+	One more than the largest value
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_32S cost map
+*/
+/************************************************************************/
 static cv::Mat RandomMap(std::mt19937& rng, int m, int n, int maxValue)
 {
     cv::Mat c(m, n, CV_32S);
@@ -54,8 +105,32 @@ static cv::Mat RandomMap(std::mt19937& rng, int m, int n, int maxValue)
     return c;
 }
 
-// Brute force: enumerate EVERY connected vertical seam. Returns the minimum
-// cost and (via count) how many seams exist. Only for tiny maps.
+/************************************************************************/
+/*!
+  \brief
+	Brute force: enumerate EVERY connected vertical seam. Returns the minimum
+	cost and (via count) how many seams exist. Only for tiny maps.
+	Recursive helper: follows every path from (i, j) down to the last row.
+  \param c
+  const cv::Mat&
+	The CV_32SC1 cost (energy) map
+  \param i
+  int
+	The current row
+  \param j
+  int
+	The current column
+  \param sum
+  int64_t
+	The cost of the path so far, before (i, j)
+  \param best
+  int64_t&
+	The cheapest complete seam found so far, updated in place
+  \param count
+  int64_t&
+	The number of complete seams found so far, updated in place
+*/
+/************************************************************************/
 static void BruteForce(const cv::Mat& c, int i, int j, int64_t sum, int64_t& best, int64_t& count)
 {
     sum += c.at<int>(i, j);
@@ -69,6 +144,22 @@ static void BruteForce(const cv::Mat& c, int i, int j, int64_t sum, int64_t& bes
         if (j + d >= 0 && j + d < c.cols) BruteForce(c, i + 1, j + d, sum, best, count);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	finds the optimal vertical seam cost by brute force, starting BruteForce
+	at every pixel of row 0
+  \param c
+  const cv::Mat&
+	The CV_32SC1 cost (energy) map
+  \param count
+  int64_t*
+	Receives the number of seams; may be nullptr
+  \return int64_t
+  64-bit integer
+  returns the minimum seam cost
+*/
+/************************************************************************/
 static int64_t BruteForceMin(const cv::Mat& c, int64_t* count = nullptr)
 {
     int64_t best = INT64_MAX, n = 0;
@@ -77,8 +168,25 @@ static int64_t BruteForceMin(const cv::Mat& c, int64_t* count = nullptr)
     return best;
 }
 
-// A vertical seam is valid if it has one entry per row, every entry is inside
-// the image, and consecutive entries differ by at most one column.
+/************************************************************************/
+/*!
+  \brief
+	A vertical seam is valid if it has one entry per row, every entry is inside
+	the image, and consecutive entries differ by at most one column.
+  \param seam
+  const std::vector<int>&
+	The seam to check
+  \param rows
+  int
+	The number of rows
+  \param cols
+  int
+	The number of columns
+  \return bool
+  boolean
+  returns true if the seam is valid, false otherwise
+*/
+/************************************************************************/
 static bool ValidSeam(const std::vector<int>& seam, int rows, int cols)
 {
     if (static_cast<int>(seam.size()) != rows) return false;
@@ -90,6 +198,21 @@ static bool ValidSeam(const std::vector<int>& seam, int rows, int cols)
     return true;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	adds up the cost of every pixel on a vertical seam
+  \param c
+  const cv::Mat&
+	The CV_32SC1 cost (energy) map
+  \param seam
+  const std::vector<int>&
+	The seam: seam[i] is the column in row i
+  \return int64_t
+  64-bit integer
+  returns the total cost of the seam
+*/
+/************************************************************************/
 static int64_t SumAlong(const cv::Mat& c, const std::vector<int>& seam)
 {
     int64_t s = 0;
@@ -97,9 +220,24 @@ static int64_t SumAlong(const cv::Mat& c, const std::vector<int>& seam)
     return s;
 }
 
-// The greedy rule written independently of GreedyAlgorithm.cpp:
-//   row 0: the leftmost minimum;
-//   row i: the cheapest of {p, p-1, p+1}, ties taken in exactly that order.
+/************************************************************************/
+/*!
+  \brief
+	checks that a seam is exactly the greedy seam.
+	The greedy rule written independently of GreedyAlgorithm.cpp:
+	  row 0: the leftmost minimum;
+	  row i: the cheapest of {p, p-1, p+1}, ties taken in exactly that order.
+  \param c
+  const cv::Mat&
+	The CV_32SC1 cost (energy) map
+  \param seam
+  const std::vector<int>&
+	The seam to check
+  \return bool
+  boolean
+  returns true if every step follows the greedy rule, false otherwise
+*/
+/************************************************************************/
 static bool FollowsGreedyRule(const cv::Mat& c, const std::vector<int>& seam)
 {
     const int* row0 = c.ptr<int>(0);
@@ -119,9 +257,12 @@ static bool FollowsGreedyRule(const cv::Mat& c, const std::vector<int>& seam)
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// 1. Hand-checked maps
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	1. Hand-checked maps
+*/
+/************************************************************************/
 static void TestHandCheckedMaps()
 {
     // Worked by hand in README §3.1:
@@ -166,9 +307,12 @@ static void TestHandCheckedMaps()
     for (int j : zr.seam) CHECK(j == 3);
 }
 
-// ---------------------------------------------------------------------------
-// 2. Tie-breaking and borders (documented in GreedyAlgorithm.h)
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	2. Tie-breaking and borders (documented in GreedyAlgorithm.h)
+*/
+/************************************************************************/
 static void TestTieBreakingAndBorders()
 {
     // Start: equal minima -> lowest index.
@@ -211,9 +355,12 @@ static void TestTieBreakingAndBorders()
     CHECK(Throws([] { FindHorizontalSeam(FromRows({ { 1, -1 }, { 2, 3 } })); }));
 }
 
-// ---------------------------------------------------------------------------
-// 3. The greedy trap
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	3. The greedy trap
+*/
+/************************************************************************/
 static void TestGreedyTrap()
 {
     // Row 0 has its cheapest pixel (0) at the far right, but that pixel leads
@@ -252,9 +399,12 @@ static void TestGreedyTrap()
     CHECK(rh.cost == 400 && TeamDPCost(c) == 5);
 }
 
-// ---------------------------------------------------------------------------
-// 4. + 5. Random maps: valid seams, greedy rule, greedy >= optimal (= brute force)
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	4. + 5. Random maps: valid seams, greedy rule, greedy >= optimal (= brute force)
+*/
+/************************************************************************/
 static void TestRandomMaps()
 {
     std::mt19937 rng(2024);
@@ -302,9 +452,12 @@ static void TestRandomMaps()
     }
 }
 
-// ---------------------------------------------------------------------------
-// 6. Seam removal
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	6. Seam removal
+*/
+/************************************************************************/
 static void TestRemoval()
 {
     // Vertical, by hand: remove cols {0, 1, 3} from rows 0, 1, 2.
@@ -364,6 +517,18 @@ static void TestRemoval()
 // ---------------------------------------------------------------------------
 // 7. + 8. The carving loop and DrawSeams
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	builds a 30x24 gray-noise colour image (channels equal, values up to
+	200) with a bright bar in columns 12-15, so no pixel is pure red or
+	green before DrawSeams
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_8UC3 test image
+*/
+/************************************************************************/
 static cv::Mat TestImage()
 {
     // Gray noise (channels equal, values <= 200) so no pixel is pure red or
@@ -380,6 +545,16 @@ static cv::Mat TestImage()
     return img;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks Greedy::Carve with both energies: output size and type, seam
+	bookkeeping, every original pixel removed at most once, stats that add
+	up, DrawSeams painting exactly the removed pixels, and Carve equal to a
+	hand-written find/remove loop; then accumulated stats, extreme and
+	invalid sizes, gray and BGRA inputs, and DrawSeams on mismatched stats
+*/
+/************************************************************************/
 static void TestCarve()
 {
     const cv::Mat img = TestImage();
@@ -483,9 +658,12 @@ static void TestCarve()
     CHECK(Throws([&] { DrawSeams(cv::Mat(24, 30, CV_32FC3), sg); }));   // not 8-bit
 }
 
-// ---------------------------------------------------------------------------
-// 9. Real image: greedy vs optimal at every carving step
-// ---------------------------------------------------------------------------
+/************************************************************************/
+/*!
+  \brief
+	9. Real image: greedy vs optimal at every carving step
+*/
+/************************************************************************/
 static void TestTowerImage()
 {
     const cv::Mat img = cv::imread("images/tower.png");
@@ -519,6 +697,16 @@ static void TestTowerImage()
 }
 
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	runs every test group and prints the summary
+  \return int
+  integer
+  returns 0 if every check passed, 1 otherwise
+*/
+/************************************************************************/
 int main()
 {
     return RunTests({

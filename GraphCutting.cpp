@@ -1,3 +1,39 @@
+/*!************************************************************************
+\file GraphCutting.cpp
+\author GYQ-SIT
+\par DP email: 2301516@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This source file contains the definitions for seam carving by Graph Cut:
+a flow network in CSR form with two max-flow solvers written from
+scratch (Edmonds-Karp and Dinic), the seam graph, the minimum-cut seam
+finders, and GraphCut::Carve, which runs the shared remove-and-repeat
+loop (SeamCarving::CarveWith) with the graph-cut seam finder.
+- FlowNetwork(numNodes, edges)
+builds the residual graph in CSR form from a list of edges
+- EdmondsKarp(s, t)
+computes the maximum s-t flow with shortest augmenting paths
+- Dinic(s, t)
+computes the maximum s-t flow with level graphs and blocking flows
+- Solve(s, t, algo)
+runs the chosen max-flow algorithm
+- SourceSide(s)
+marks the nodes reachable from s in the residual graph
+- MemoryBytes()
+returns the memory used by the graph and the solver work arrays
+- BuildSeamGraph(cost, s, t)
+builds the flow network whose minimum cut is the optimal vertical seam
+- FindVerticalSeam(cost, algo)
+finds the optimal vertical seam from a minimum s-t cut
+- FindHorizontalSeam(cost, algo)
+finds the optimal horizontal seam on the transposed cost map
+- Carve(img, newWidth, newHeight, algo, energy, stats, recordSeams)
+shrinks an image by repeatedly removing the graph-cut seam
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "GraphCutting.h"
 
 #include <algorithm>
@@ -10,6 +46,22 @@ namespace GraphCut
     // ========================================================================
     // FlowNetwork
     // ========================================================================
+
+    /************************************************************************/
+    /*!
+      \brief
+    	constructs the residual graph. Every edge (u, v, c, rc) becomes two
+    	arcs, u -> v with capacity c and v -> u with capacity rc, linked through
+    	rev. The arcs are grouped by their tail node with a counting sort,
+    	giving the CSR (compressed sparse row) layout.
+      \param numNodes
+      int64_t
+    	The number of nodes in the graph
+      \param edges
+      const std::vector<Edge>&
+    	The edges, each with its forward and reverse capacity
+    */
+    /************************************************************************/
     FlowNetwork::FlowNetwork(int64_t numNodes, const std::vector<Edge>& edges)
         : n(numNodes), start(numNodes + 1, 0)
     {
@@ -36,8 +88,24 @@ namespace GraphCut
         }
     }
 
-    // Edmonds-Karp: BFS for the shortest augmenting path, push its bottleneck,
-    // repeat until t is unreachable. Each augmentation costs one O(E) BFS.
+    /************************************************************************/
+    /*!
+      \brief
+    	computes the maximum flow from s to t with the Edmonds-Karp algorithm,
+    	O(V E^2).
+    	Edmonds-Karp: BFS for the shortest augmenting path, push its bottleneck,
+    	repeat until t is unreachable. Each augmentation costs one O(E) BFS.
+      \param s
+      int64_t
+    	The source node
+      \param t
+      int64_t
+    	The sink node
+      \return int64_t
+      64-bit integer
+      returns the value of the maximum flow from s to t
+    */
+    /************************************************************************/
     int64_t FlowNetwork::EdmondsKarp(int64_t s, int64_t t)
     {
         std::vector<int64_t> parentArc(n), queue(n);
@@ -81,10 +149,25 @@ namespace GraphCut
         }
     }
 
-    // Dinic: one BFS builds the level graph, then a blocking flow is sent with
-    // an iterative DFS (current-arc pointers, dead-end pruning). Repeat until t
-    // is unreachable. The DFS is iterative because seam paths are thousands of
-    // nodes long.
+    /************************************************************************/
+    /*!
+      \brief
+    	computes the maximum flow from s to t with Dinic's algorithm, O(V^2 E).
+    	Dinic: one BFS builds the level graph, then a blocking flow is sent with
+    	an iterative DFS (current-arc pointers, dead-end pruning). Repeat until t
+    	is unreachable. The DFS is iterative because seam paths are thousands of
+    	nodes long.
+      \param s
+      int64_t
+    	The source node
+      \param t
+      int64_t
+    	The sink node
+      \return int64_t
+      64-bit integer
+      returns the value of the maximum flow from s to t
+    */
+    /************************************************************************/
     int64_t FlowNetwork::Dinic(int64_t s, int64_t t)
     {
         std::vector<int64_t> level(n), it(n), queue(n), path;
@@ -163,11 +246,45 @@ namespace GraphCut
         }
     }
 
+    /************************************************************************/
+    /*!
+      \brief
+    	computes the maximum flow from s to t with the chosen algorithm
+      \param s
+      int64_t
+    	The source node
+      \param t
+      int64_t
+    	The sink node
+      \param algo
+      MaxFlowAlgorithm
+    	The max-flow solver: MaxFlowAlgorithm::Dinic or
+    	MaxFlowAlgorithm::EdmondsKarp
+      \return int64_t
+      64-bit integer
+      returns the value of the maximum flow from s to t
+    */
+    /************************************************************************/
     int64_t FlowNetwork::Solve(int64_t s, int64_t t, MaxFlowAlgorithm algo)
     {
         return algo == MaxFlowAlgorithm::Dinic ? Dinic(s, t) : EdmondsKarp(s, t);
     }
 
+    /************************************************************************/
+    /*!
+      \brief
+    	after a max-flow run, finds every node still reachable from s through
+    	arcs with remaining capacity, using a depth-first search. These nodes
+    	form the source side S of a minimum cut.
+      \param s
+      int64_t
+    	The source node
+      \return std::vector<uint8_t>
+      vector of unsigned 8-bit integers
+      returns one entry per node: 1 if the node is on the source side, 0
+      otherwise
+    */
+    /************************************************************************/
     std::vector<uint8_t> FlowNetwork::SourceSide(int64_t s) const
     {
         std::vector<uint8_t> inS(n, 0);
@@ -190,6 +307,16 @@ namespace GraphCut
         return inS;
     }
 
+    /************************************************************************/
+    /*!
+      \brief
+    	calculates the memory used by the CSR arrays (start, to, cap, rev) plus
+    	the three per-node work arrays a solver allocates (level, it, queue)
+      \return size_t
+      unsigned integer
+      returns the number of bytes
+    */
+    /************************************************************************/
     size_t FlowNetwork::MemoryBytes() const
     {
         const size_t csr = (start.size() + to.size() + cap.size() + rev.size()) * sizeof(int64_t);
@@ -202,6 +329,31 @@ namespace GraphCut
     // ========================================================================
     // Seam finding
     // ========================================================================
+
+    /************************************************************************/
+    /*!
+      \brief
+    	builds the flow network for a vertical seam on an m x n cost map: one
+    	node per pixel, a virtual column n so the last real column can also be
+    	removed, a source s and a sink t. Edges: s -> first column and virtual
+    	column -> t (infinite), (i, j) -> (i, j+1) with capacity c[i][j] and an
+    	infinite backward edge, and infinite diagonal edges to (i-1, j-1) and
+    	(i+1, j-1) so every finite cut is exactly one connected seam. 'Infinite'
+    	is one more than the sum of all costs.
+      \param cost
+      const cv::Mat&
+    	The CV_32SC1 cost map
+      \param s
+      int64_t&
+    	Receives the index of the source node
+      \param t
+      int64_t&
+    	Receives the index of the sink node
+      \return FlowNetwork
+      flow network
+      returns the network with m(n+1) + 2 nodes
+    */
+    /************************************************************************/
     FlowNetwork BuildSeamGraph(const cv::Mat& cost, int64_t& s, int64_t& t)
     {
         const int64_t m = cost.rows, n = cost.cols;
@@ -235,6 +387,33 @@ namespace GraphCut
         return FlowNetwork(m * W + 2, edges);
     }
 
+    /************************************************************************/
+    /*!
+      \brief
+    	finds the optimal vertical seam as a minimum s-t cut: runs max-flow on
+    	the seam graph, takes the source side S, and in each row removes the
+    	rightmost pixel in S (each row of S is a prefix). A single-column map
+    	needs no graph. By the max-flow min-cut theorem the flow equals the seam
+    	cost, which is checked. The result is the leftmost optimal seam.
+      \param cost
+      const cv::Mat&
+    	The cost (energy) map, a non-empty CV_32SC1 matrix with no negative
+    	values
+      \param algo
+      MaxFlowAlgorithm
+    	The max-flow solver: MaxFlowAlgorithm::Dinic or
+    	MaxFlowAlgorithm::EdmondsKarp
+      \return SeamResult
+      seam result
+      returns the seam (seam[i] = column removed in row i), its cost, the flow
+      value and the graph and solver counters
+      \exception std::invalid_argument
+    	thrown if cost is empty, is not CV_32SC1, or contains a negative value
+      \exception std::logic_error
+    	thrown if the max-flow value differs from the seam cost, which would
+    	mean a bug in the graph or the solver
+    */
+    /************************************************************************/
     SeamResult FindVerticalSeam(const cv::Mat& cost, MaxFlowAlgorithm algo)
     {
         if (cost.type() != CV_32SC1 || cost.empty())
@@ -281,6 +460,26 @@ namespace GraphCut
         return result;
     }
 
+    /************************************************************************/
+    /*!
+      \brief
+    	finds the optimal horizontal seam by transposing the cost map and
+    	finding a vertical seam on it
+      \param cost
+      const cv::Mat&
+    	The cost (energy) map, a non-empty CV_32SC1 matrix with no negative
+    	values
+      \param algo
+      MaxFlowAlgorithm
+    	The max-flow solver: MaxFlowAlgorithm::Dinic or
+    	MaxFlowAlgorithm::EdmondsKarp
+      \return SeamResult
+      seam result
+      returns the seam (seam[j] = row removed in column j) and its cost
+      \exception std::invalid_argument
+    	thrown if cost is empty, is not CV_32SC1, or contains a negative value
+    */
+    /************************************************************************/
     SeamResult FindHorizontalSeam(const cv::Mat& cost, MaxFlowAlgorithm algo)
     {
         cv::Mat transposed;
@@ -291,6 +490,46 @@ namespace GraphCut
     // ========================================================================
     // Carving: the shared remove-and-repeat loop with the graph-cut seam finder
     // ========================================================================
+
+    /************************************************************************/
+    /*!
+      \brief
+    	shrinks an image to newWidth x newHeight by repeatedly removing the
+    	optimal seam found by graph cut. It runs the shared
+    	SeamCarving::CarveWith loop with FindVerticalSeam as the seam finder:
+    	vertical seams first, then horizontal seams on the transposed image,
+    	recomputing the energy map after every removal.
+      \param img
+      const cv::Mat&
+    	The image to shrink (it is not modified)
+      \param newWidth
+      int
+    	The target width, between 1 and img.cols
+      \param newHeight
+      int
+    	The target height, between 1 and img.rows
+      \param algo
+      MaxFlowAlgorithm
+    	The max-flow solver: MaxFlowAlgorithm::Dinic or
+    	MaxFlowAlgorithm::EdmondsKarp
+      \param energy
+      EnergyType
+    	The energy to use: Backward (Sobel) or Forward
+      \param stats
+      CarveStats*
+    	Where timing, seam costs and recorded seams are added; may be nullptr
+      \param recordSeams
+      bool
+    	Whether to record every removed seam in original-image coordinates (only
+    	when stats is not null)
+      \return cv::Mat
+      OpenCV matrix
+      returns the resized image, the same type as img
+      \exception std::invalid_argument
+    	thrown if img is empty or the target size is not between 1 and the
+    	original size
+    */
+    /************************************************************************/
     cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight, MaxFlowAlgorithm algo,
                   EnergyType energy, CarveStats* stats, bool recordSeams)
     {

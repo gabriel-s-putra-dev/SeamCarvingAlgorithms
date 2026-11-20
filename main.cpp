@@ -1,14 +1,54 @@
-// Seam carving: choose an algorithm and shrink an image to a new size.
-//
-//   seamcarve <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek|greedy> [backward|forward]
-//   seamcarve                     (no arguments: interactive menu)
-//
-// A width or height of 0 (or pressing Enter in the menu) keeps that dimension
-// at its original size, e.g. "seamcarve in.png out.png 194 0 dp" shrinks the
-// width only.
-//
-// Writes the resized image to <output> and the removed seams drawn on the
-// original (red = vertical, green = horizontal) to <output-name>_seams.png.
+/*!************************************************************************
+\file main.cpp
+\author Gabriel Sebastian Putra, Asus, XIONG YANG
+\par DP email: gabrielsebastian.p@digipen.edu, ngylethan@gmail.com, xiong.yang@digipen.edu
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This source file contains the seam-carving program: it reads an image,
+lets the user choose the target size, the algorithm (Dynamic
+Programming, Graph Cut with Dinic or Edmonds-Karp, or Greedy) and the
+energy type, either from the command line or from an interactive menu,
+then writes the resized image and the removed seams.
+
+Seam carving: choose an algorithm and shrink an image to a new size.
+
+  seamcarve <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek|greedy> [backward|forward]
+  seamcarve                     (no arguments: interactive menu)
+
+A width or height of 0 (or pressing Enter in the menu) keeps that dimension
+at its original size, e.g. "seamcarve in.png out.png 194 0 dp" shrinks the
+width only.
+
+Writes the resized image to <output> and the removed seams drawn on the
+original (red = vertical, green = horizontal) to <output-name>_seams.png.
+- AlgorithmName(a)
+returns the display name of an algorithm
+- ParseAlgorithm(s, out)
+reads an algorithm from its name or menu number
+- ParseEnergy(s, forward)
+reads an energy type from its name or menu number
+- ParseInt(s, out)
+reads a whole string as an int
+- SeamsPath(output)
+builds the file name of the seam overlay image
+- Ask(prompt)
+prints a prompt and reads one line
+- AskSize(label, original, out)
+asks for a new width or height
+- AskOptions(o, img)
+runs the interactive menu
+- Run(img, o)
+carves the image with the chosen algorithm and draws the removed seams
+- PrintUsage(exe)
+prints the command-line usage
+- main(argc, argv)
+reads the options, runs the carve, writes the images and prints a
+summary
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "DynamicProgramming.h"
 #include "GraphCutting.h"
 #include "GreedyAlgorithm.h"
@@ -40,6 +80,18 @@ struct RunResult
     double seamSeconds = 0.0;
 };
 
+/************************************************************************/
+/*!
+  \brief
+	gets the name of an algorithm as shown to the user
+  \param a
+  Algorithm
+	The algorithm
+  \return const char*
+  C string
+  returns the display name, or "?" for an unknown value
+*/
+/************************************************************************/
 static const char* AlgorithmName(Algorithm a)
 {
     switch (a)
@@ -52,6 +104,22 @@ static const char* AlgorithmName(Algorithm a)
     return "?";
 }
 
+/************************************************************************/
+/*!
+  \brief
+	reads an algorithm choice: dp or 1, gc-dinic or 2, gc-ek or 3, greedy or
+	4
+  \param s
+  const std::string&
+	The text to read
+  \param out
+  Algorithm&
+	Receives the algorithm if s is valid
+  \return bool
+  boolean
+  returns true if s named an algorithm, false otherwise
+*/
+/************************************************************************/
 static bool ParseAlgorithm(const std::string& s, Algorithm& out)
 {
     if (s == "dp" || s == "1")       { out = Algorithm::DP;                  return true; }
@@ -61,6 +129,21 @@ static bool ParseAlgorithm(const std::string& s, Algorithm& out)
     return false;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	reads an energy choice: backward or 1, forward or 2
+  \param s
+  const std::string&
+	The text to read
+  \param forward
+  bool&
+	Receives true for forward energy, false for backward
+  \return bool
+  boolean
+  returns true if s named an energy type, false otherwise
+*/
+/************************************************************************/
 static bool ParseEnergy(const std::string& s, bool& forward)
 {
     if (s == "backward" || s == "1") { forward = false; return true; }
@@ -68,6 +151,22 @@ static bool ParseEnergy(const std::string& s, bool& forward)
     return false;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	converts a string to an int, accepting it only if the whole string is a
+	number
+  \param s
+  const std::string&
+	The text to read
+  \param out
+  int&
+	Receives the number
+  \return bool
+  boolean
+  returns true if the whole string was a valid int, false otherwise
+*/
+/************************************************************************/
 static bool ParseInt(const std::string& s, int& out)
 {
     try
@@ -79,7 +178,20 @@ static bool ParseInt(const std::string& s, int& out)
     catch (const std::exception&) { return false; }
 }
 
-// "out/result.png" -> "out/result_seams.png"
+/************************************************************************/
+/*!
+  \brief
+	builds the path of the seam overlay image by adding _seams before the
+	file extension (or _seams.png if there is none):
+	"out/result.png" -> "out/result_seams.png"
+  \param output
+  const std::string&
+	The path of the resized output image
+  \return std::string
+  string
+  returns the path of the seam overlay image
+*/
+/************************************************************************/
 static std::string SeamsPath(const std::string& output)
 {
     const size_t slash = output.find_last_of("/\\");
@@ -89,6 +201,18 @@ static std::string SeamsPath(const std::string& output)
     return output.substr(0, dot) + "_seams" + output.substr(dot);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	prints a prompt and reads one line from the console
+  \param prompt
+  const std::string&
+	The text to print before reading
+  \return std::string
+  string
+  returns the line entered, without the newline (empty if input ended)
+*/
+/************************************************************************/
 static std::string Ask(const std::string& prompt)
 {
     std::cout << prompt;
@@ -97,7 +221,25 @@ static std::string Ask(const std::string& prompt)
     return line;
 }
 
-// Asks for a new width/height in 1..original. Enter or 0 keeps the original.
+/************************************************************************/
+/*!
+  \brief
+	Asks for a new width/height in 1..original. Enter or 0 keeps the original.
+	Invalid input is asked for again.
+  \param label
+  const char*
+	The name of the dimension shown in the prompt
+  \param original
+  int
+	The original size, the largest value allowed
+  \param out
+  int&
+	Receives the chosen size
+  \return bool
+  boolean
+  returns true once a size was chosen, false if input ended
+*/
+/************************************************************************/
 static bool AskSize(const char* label, int original, int& out)
 {
     const std::string range = std::to_string(original);
@@ -112,7 +254,23 @@ static bool AskSize(const char* label, int original, int& out)
     }
 }
 
-// Interactive menu; returns false if the user gave up / input ended.
+/************************************************************************/
+/*!
+  \brief
+	asks for the input image (until one can be read), the new width and
+	height, the algorithm, the energy type and the output path.
+	Interactive menu; returns false if the user gave up / input ended.
+  \param o
+  Options&
+	Receives the chosen options
+  \param img
+  cv::Mat&
+	Receives the input image
+  \return bool
+  boolean
+  returns true if every option was chosen, false if input ended
+*/
+/************************************************************************/
 static bool AskOptions(Options& o, cv::Mat& img)
 {
     std::cout << "=== Seam carving ===\n";
@@ -143,8 +301,28 @@ static bool AskOptions(Options& o, cv::Mat& img)
     return true;
 }
 
-// All three methods fill the same SeamCarving::CarveStats, so only the call
-// that chooses the seam finder differs.
+/************************************************************************/
+/*!
+  \brief
+	carves the image to the chosen size with the chosen algorithm and
+	energy, recording the removed seams, and draws them on the original
+	image.
+	All three methods fill the same SeamCarving::CarveStats, so only the call
+	that chooses the seam finder differs.
+  \param img
+  const cv::Mat&
+	The input image
+  \param o
+  const Options&
+	The chosen size, algorithm and energy type
+  \return RunResult
+  run result
+  returns the resized image, the seam overlay, the total energy removed,
+  the number of seams and the time spent finding seams
+  \exception std::invalid_argument
+	thrown if the target size is not between 1 and the original size
+*/
+/************************************************************************/
 static RunResult Run(const cv::Mat& img, const Options& o)
 {
     using SeamCarving::EnergyType;
@@ -174,6 +352,15 @@ static RunResult Run(const cv::Mat& img, const Options& o)
     return r;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	prints how to run the program from the command line
+  \param exe
+  const char*
+	The program name, argv[0]
+*/
+/************************************************************************/
 static void PrintUsage(const char* exe)
 {
     std::printf("usage: %s <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek|greedy> [backward|forward]\n"
@@ -181,6 +368,27 @@ static void PrintUsage(const char* exe)
                 "       a width or height of 0 keeps the original size\n", exe, exe);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	runs the program. With no arguments it shows the interactive menu;
+	otherwise it reads the input, output, new width, new height, algorithm
+	and optional energy type from the command line, where 0 keeps a
+	dimension. It then carves the image, writes the result and the seam
+	overlay, and prints the size change, total energy removed and timings.
+	Graph Cut on a large image prints a warning first because it is slow.
+  \param argc
+  int
+	The number of command-line arguments
+  \param argv
+  char**
+	The command-line arguments
+  \return int
+  integer
+  returns 0 on success, 1 on invalid arguments, unreadable input, a failed
+  write or an error while carving
+*/
+/************************************************************************/
 int main(int argc, char** argv)
 {
     Options o;

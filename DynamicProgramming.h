@@ -1,21 +1,46 @@
+/*!************************************************************************
+\file DynamicProgramming.h
+\author Gabriel Sebastian Putra, Ho Jun
+\par DP email: gabrielsebastian.p@digipen.edu, 2401700@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This header file contains the declarations for seam carving by Dynamic
+Programming.
+
+Seam carving by Dynamic Programming.
+
+Step (a): energy map                -> SeamCarving::ComputeEnergy (shared)
+Step (b): DP minimum seam (vertical and horizontal)   -> this file
+Step (c): remove the seam, recompute the energy map, repeat until the
+          image has the requested size  -> DP::Carve, which runs the shared
+          SeamCarving::CarveWith loop with the DP seam finder
+
+Steps (a) and (c) are shared with Greedy and Graph Cut (SeamCarving.h), so
+all three methods use the same energy map, removal and carving order and
+differ only in how each seam is chosen. The shared names are re-exported
+below, so DP::ComputeEnergy, DP::CarveStats, DP::DrawSeams, ... still work.
+
+OpenCV is only used for colour conversion, the Sobel filter and transpose;
+no content-aware resizing function from any library is used.
+- CumulativeEnergy(energy)
+returns the cumulative minimum energy table M of an energy map
+- FindVerticalSeam(energy)
+returns the leftmost minimum-energy vertical seam
+- FindHorizontalSeam(energy)
+returns the minimum-energy horizontal seam
+- SeamEnergy(energy, seam, vertical)
+returns the total energy of a valid seam
+- Carve(img, newWidth, newHeight, energy, stats, recordSeams)
+shrinks an image by repeatedly removing the DP minimum seam
+- EnergyType, ComputeEnergy, RemoveVerticalSeam, RemoveHorizontalSeam, CarveStats, DrawSeams
+re-exported from SeamCarving.h
+**************************************************************************/
+
 #pragma once
-// ============================================================================
-// Seam carving by Dynamic Programming.
-//
-// Step (a): energy map                -> SeamCarving::ComputeEnergy (shared)
-// Step (b): DP minimum seam (vertical and horizontal)   -> this file
-// Step (c): remove the seam, recompute the energy map, repeat until the
-//           image has the requested size  -> DP::Carve, which runs the shared
-//           SeamCarving::CarveWith loop with the DP seam finder
-//
-// Steps (a) and (c) are shared with Greedy and Graph Cut (SeamCarving.h), so
-// all three methods use the same energy map, removal and carving order and
-// differ only in how each seam is chosen. The shared names are re-exported
-// below, so DP::ComputeEnergy, DP::CarveStats, DP::DrawSeams, ... still work.
-//
-// OpenCV is only used for colour conversion, the Sobel filter and transpose;
-// no content-aware resizing function from any library is used.
-// ============================================================================
+
+// ----- Headers ------------------------------------------------------- //
 #include "SeamCarving.h"
 
 #include <opencv2/core.hpp>

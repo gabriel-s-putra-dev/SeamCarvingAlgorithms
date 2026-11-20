@@ -1,33 +1,51 @@
-// Memory experiment: MEASURED peak memory of finding ONE vertical seam.
-//
-// The table in README §2.2 counts the bytes of the final data structures.
-// This program measures what the process actually uses, including temporary
-// buffers (e.g. the edge list BuildSeamGraph builds before the CSR graph)
-// and allocator overhead.
-//
-// One run = one (method, width) pair in a FRESH process, so the peak of one run
-// cannot hide inside the peak of an earlier one. Use the driver:
-//   python tools/run_graphcut_memory.py          (writes results/memory_peak.csv + chart)
-//
-// Build from the repo root:
-//   g++ -std=c++14 -O2 -I. tests/GraphCuttingMemory.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_mem `pkg-config --cflags --libs opencv4`
-// Single run:
-//   ./gc_mem <dp|gc-dinic|gc-ek> <width>
-//   -> prints one CSV line: method,width,height,pixels,baseline_bytes,peak_bytes,delta_bytes,seconds,seam_cost,note
-//      (note = "below_resolution" if delta < 1 MiB: too small to measure reliably)
-//
-// Measurement: delta = peak resident memory (high-water mark) after the seam
-//              minus resident memory just before it. Setup (image load, resize,
-//              energy map) happens before the baseline, so delta is the extra
-//              memory needed by the seam finder alone.
-//   Linux  : VmRSS / VmHWM from /proc/self/status. The peak is reset just
-//            before the seam (write "5" to /proc/self/clear_refs), and glibc is
-//            told to return freed memory to the OS and to mmap every large
-//            block, so the seam finder cannot hide inside memory left over
-//            from setup.
-//   Windows: WorkingSetSize / PeakWorkingSetSize (link Psapi.lib). The peak
-//            cannot be reset there, so run one size per process (the driver does).
-//            Not tested on Windows.
+/*!************************************************************************
+\file GraphCuttingMemory.cpp
+\author GYQ-SIT
+\par DP email: 2301516@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+Memory experiment: MEASURED peak memory of finding ONE vertical seam.
+
+The table in README §2.2 counts the bytes of the final data structures.
+This program measures what the process actually uses, including temporary
+buffers (e.g. the edge list BuildSeamGraph builds before the CSR graph)
+and allocator overhead.
+
+One run = one (method, width) pair in a FRESH process, so the peak of one run
+cannot hide inside the peak of an earlier one. Use the driver:
+  python tools/run_graphcut_memory.py          (writes results/memory_peak.csv + chart)
+
+Build from the repo root:
+  g++ -std=c++14 -O2 -I. tests/GraphCuttingMemory.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_mem `pkg-config --cflags --libs opencv4`
+Single run:
+  ./gc_mem <dp|gc-dinic|gc-ek> <width>
+  -> prints one CSV line: method,width,height,pixels,baseline_bytes,peak_bytes,delta_bytes,seconds,seam_cost,note
+     (note = "below_resolution" if delta < 1 MiB: too small to measure reliably)
+
+Measurement: delta = peak resident memory (high-water mark) after the seam
+             minus resident memory just before it. Setup (image load, resize,
+             energy map) happens before the baseline, so delta is the extra
+             memory needed by the seam finder alone.
+  Linux  : VmRSS / VmHWM from /proc/self/status. The peak is reset just
+           before the seam (write "5" to /proc/self/clear_refs), and glibc is
+           told to return freed memory to the OS and to mmap every large
+           block, so the seam finder cannot hide inside memory left over
+           from setup.
+  Windows: WorkingSetSize / PeakWorkingSetSize (link Psapi.lib). The peak
+           cannot be reset there, so run one size per process (the driver does).
+           Not tested on Windows.
+- ReadMem()
+reads the current and peak resident memory of the process
+- ResetPeak()
+resets the peak-memory counter (Linux only)
+- main(argc, argv)
+measures the extra memory one vertical seam needs and prints one CSV
+line
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "GraphCutting.h"
 #include "DynamicProgramming.h"
 
@@ -53,6 +71,18 @@
 
 struct Mem { long long current = -1, peak = -1; };
 
+/************************************************************************/
+/*!
+  \brief
+	reads the resident memory of this process: VmRSS / VmHWM from
+	/proc/self/status on Linux, WorkingSetSize / PeakWorkingSetSize on
+	Windows
+  \return Mem
+  memory reading
+  returns the current and peak resident memory in bytes, or -1 for values
+  that are not available on this OS
+*/
+/************************************************************************/
 static Mem ReadMem()
 {
     Mem m;
@@ -79,7 +109,16 @@ static Mem ReadMem()
     return m;
 }
 
-// Linux only: reset the resident-memory high-water mark (VmHWM).
+/************************************************************************/
+/*!
+  \brief
+	Linux only: reset the resident-memory high-water mark (VmHWM).
+  \return bool
+  boolean
+  returns true if the peak was reset, false otherwise (always false
+  outside Linux)
+*/
+/************************************************************************/
 static bool ResetPeak()
 {
 #if defined(__linux__)
@@ -92,6 +131,26 @@ static bool ResetPeak()
     return false;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	scales the tower image to the given width, computes its energy map, then
+	measures the peak resident memory and time of finding one vertical seam
+	with DP, Graph Cut (Dinic) or Graph Cut (Edmonds-Karp), and prints one
+	CSV line. Peaks under 1 MiB are flagged as below the measurement
+	resolution.
+  \param argc
+  int
+	The number of command-line arguments (must be 3)
+  \param argv
+  char**
+	The arguments: the method (dp, gc-dinic or gc-ek) and the width
+  \return int
+  integer
+  returns 0 on success, 1 if the image or the memory counters are not
+  available, 2 on invalid arguments
+*/
+/************************************************************************/
 int main(int argc, char** argv)
 {
 #if defined(__GLIBC__)

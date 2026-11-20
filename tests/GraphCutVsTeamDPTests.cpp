@@ -1,24 +1,45 @@
-// Cross-check: Graph Cut (GraphCutting.cpp) against the TEAM's DP
-// (DynamicProgramming.cpp).
-//
-// Build and run from the repo root:
-//   cmake --build --preset vs2022-release --target gc_vs_dp
-//   out\build\vs2022\Release\gc_vs_dp.exe     (or: ctest --preset vs2022-release)
-// or with g++:
-//   g++ -std=c++14 -O2 -I. tests/GraphCutVsTeamDPTests.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_vs_dp `pkg-config --cflags --libs opencv4`
-//
-// What is checked:
-//   1. Single seams on random cost maps: graph-cut cost == DP optimum, for
-//      Dinic and Edmonds-Karp, vertical and horizontal. The GC seam is also
-//      re-scored with DP::SeamEnergy, which throws if the seam is invalid.
-//   2. Full carves on real images: GC::Carve and DP::Carve remove seams of
-//      equal cost at every step and produce pixel-identical output.
-// (Both modules use the one shared SeamCarving::ComputeEnergy, so their
-// energy maps are identical by construction; see tests/DynamicProgrammingTests.cpp.)
-//
-// By the max-flow min-cut theorem, step 1 must hold exactly. Equal seams and
-// identical images (step 2) additionally rely on both sides breaking ties
-// towards the leftmost seam; costs would match even without that.
+/*!************************************************************************
+\file GraphCutVsTeamDPTests.cpp
+\author GYQ-SIT
+\par DP email: 2301516@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+Cross-check: Graph Cut (GraphCutting.cpp) against the TEAM's DP
+(DynamicProgramming.cpp).
+
+Build and run from the repo root:
+  cmake --build --preset vs2022-release --target gc_vs_dp
+  out\build\vs2022\Release\gc_vs_dp.exe     (or: ctest --preset vs2022-release)
+or with g++:
+  g++ -std=c++14 -O2 -I. tests/GraphCutVsTeamDPTests.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_vs_dp `pkg-config --cflags --libs opencv4`
+
+What is checked:
+  1. Single seams on random cost maps: graph-cut cost == DP optimum, for
+     Dinic and Edmonds-Karp, vertical and horizontal. The GC seam is also
+     re-scored with DP::SeamEnergy, which throws if the seam is invalid.
+  2. Full carves on real images: GC::Carve and DP::Carve remove seams of
+     equal cost at every step and produce pixel-identical output.
+(Both modules use the one shared SeamCarving::ComputeEnergy, so their
+energy maps are identical by construction; see tests/DynamicProgrammingTests.cpp.)
+
+By the max-flow min-cut theorem, step 1 must hold exactly. Equal seams and
+identical images (step 2) additionally rely on both sides breaking ties
+towards the leftmost seam; costs would match even without that.
+- SameMat(a, b)
+checks whether two matrices are identical
+- RandomCost(rng, rows, cols, maxVal)
+builds a random cost map
+- TestRandomSeams()
+graph-cut seam cost and seam == team DP on random maps
+- TestCarveAgrees(name, img, newW, newH, energy, eName)
+GraphCut::Carve == DP::Carve on one image
+- main()
+runs every check and prints the summary
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "Check.h"
 #include "GraphCutting.h"
 #include "DynamicProgramming.h"
@@ -32,6 +53,21 @@
 #include <string>
 #include <vector>
 
+/************************************************************************/
+/*!
+  \brief
+	checks whether two matrices have the same size, type and values
+  \param a
+  const cv::Mat&
+	The first matrix
+  \param b
+  const cv::Mat&
+	The second matrix
+  \return bool
+  boolean
+  returns true if the matrices are identical, false otherwise
+*/
+/************************************************************************/
 static bool SameMat(const cv::Mat& a, const cv::Mat& b)
 {
     if (a.size() != b.size() || a.type() != b.type()) return false;
@@ -41,6 +77,27 @@ static bool SameMat(const cv::Mat& a, const cv::Mat& b)
     return cv::countNonZero(diff.reshape(1)) == 0;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	builds a cost map with uniformly random values
+  \param rng
+  std::mt19937&
+	The random number generator
+  \param rows
+  int
+	The number of rows
+  \param cols
+  int
+	The number of columns
+  \param maxVal
+  int
+	The largest value; values are drawn from [0, maxVal]
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_32SC1 cost map
+*/
+/************************************************************************/
 static cv::Mat RandomCost(std::mt19937& rng, int rows, int cols, int maxVal)
 {
     std::uniform_int_distribution<int> v(0, maxVal);
@@ -51,6 +108,17 @@ static cv::Mat RandomCost(std::mt19937& rng, int rows, int cols, int maxVal)
 }
 
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	on 400 random cost maps (small values for many ties, large values for
+	big sums), checks for Dinic and Edmonds-Karp, vertical and horizontal,
+	that the graph-cut cost and flow equal the team DP optimum, that
+	DP::SeamEnergy accepts the seam, and that the seam itself equals the DP
+	seam
+*/
+/************************************************************************/
 static void TestRandomSeams()
 {
     std::mt19937 rng(20261117);
@@ -96,6 +164,33 @@ static void TestRandomSeams()
     std::printf("  %d random maps x {Dinic, EK} x {vertical, horizontal}\n", cases);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	carves the same image with GraphCut::Carve (Dinic) and DP::Carve and
+	checks that they remove seams of equal cost at every step, record
+	identical seams and produce pixel-identical images, then prints a one-
+	line summary
+  \param name
+  const std::string&
+	The image name shown in the summary
+  \param img
+  const cv::Mat&
+	The image to carve
+  \param newW
+  int
+	The target width
+  \param newH
+  int
+	The target height
+  \param energy
+  SeamCarving::EnergyType
+	The energy used by both methods
+  \param eName
+  const char*
+	The energy name shown in the summary
+*/
+/************************************************************************/
 static void TestCarveAgrees(const std::string& name, const cv::Mat& img, int newW, int newH,
                             SeamCarving::EnergyType energy, const char* eName)
 {
@@ -118,6 +213,18 @@ static void TestCarveAgrees(const std::string& name, const cv::Mat& img, int new
                 (long long)gs.totalCost, (long long)ds.totalCost, SameMat(gOut, dOut) ? "identical" : "DIFFERENT");
 }
 
+/************************************************************************/
+/*!
+  \brief
+	loads the sample images, runs the random-seam check and the full-carve
+	comparisons (both energies on the synthetic image and a half-size tower,
+	backward on the full tower) and prints the summary
+  \return int
+  integer
+  returns 0 if every check passed, 1 if a check failed or the images could
+  not be read
+*/
+/************************************************************************/
 int main()
 {
     const cv::Mat tower = cv::imread("images/tower.png");

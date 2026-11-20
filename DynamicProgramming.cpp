@@ -1,3 +1,35 @@
+/*!************************************************************************
+\file DynamicProgramming.cpp
+\author Gabriel Sebastian Putra, Ho Jun
+\par DP email: gabrielsebastian.p@digipen.edu, 2401700@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This source file contains the definitions for step (b) of seam carving
+by Dynamic Programming: the cumulative minimum energy table, the minimum
+vertical and horizontal seams found from it, the energy of a seam, and
+DP::Carve, which runs the shared remove-and-repeat loop
+(SeamCarving::CarveWith) with the DP seam finder.
+- CheckEnergy(energy, who)
+validates an energy map and throws with the caller's name if it is
+invalid
+- BuildCumulative(energy)
+builds the cumulative minimum energy table M without validating
+- CumulativeEnergy(energy)
+validates the energy map and returns its cumulative table M
+- FindVerticalSeam(energy)
+finds the leftmost minimum-energy vertical seam by backtracking through
+M
+- FindHorizontalSeam(energy)
+finds the minimum-energy horizontal seam on the transposed energy map
+- SeamEnergy(energy, seam, vertical)
+validates a seam and returns the sum of its energies
+- Carve(img, newWidth, newHeight, energy, stats, recordSeams)
+shrinks an image by repeatedly removing the DP minimum seam
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "DynamicProgramming.h"
 
 #include <algorithm>
@@ -14,8 +46,23 @@ namespace DP
     // (b) Minimum seam by dynamic programming
     // ========================================================================
 
-    // Every public function validates with its own name, so an error message
-    // always points at the function the caller actually used.
+    /************************************************************************/
+    /*!
+      \brief
+    	checks that an energy map is non-empty, of type CV_32SC1 and has no
+    	negative values.
+    	Every public function validates with its own name, so an error message
+    	always points at the function the caller actually used.
+      \param energy
+      const cv::Mat&
+    	The energy map to validate
+      \param who
+      const char*
+    	The name of the calling function, used at the start of the error message
+      \exception std::invalid_argument
+    	thrown if energy is empty, is not CV_32SC1, or contains a negative value
+    */
+    /************************************************************************/
     static void CheckEnergy(const cv::Mat& energy, const char* who)
     {
         if (energy.empty())
@@ -31,12 +78,24 @@ namespace DP
             throw std::invalid_argument(std::string(who) + ": energy values must be non-negative");
     }
 
-    // Builds the table without validating (callers have already checked).
-    // M[i][j] = e[i][j] + min(M[i-1][j-1], M[i-1][j], M[i-1][j+1]).
-    // Each cell stores the cheapest total energy of any vertical path that
-    // starts in row 0 and ends at (i, j). Overall cost O(rows * cols).
-    // Stored as 64-bit (double holds integers up to 2^53 exactly) so the sums
-    // cannot overflow, consistent with SeamEnergy.
+    /************************************************************************/
+    /*!
+      \brief
+    	builds the cumulative minimum energy table M of an energy map.
+    	Builds the table without validating (callers have already checked).
+    	M[i][j] = e[i][j] + min(M[i-1][j-1], M[i-1][j], M[i-1][j+1]).
+    	Each cell stores the cheapest total energy of any vertical path that
+    	starts in row 0 and ends at (i, j). Overall cost O(rows * cols).
+    	Stored as 64-bit (double holds integers up to 2^53 exactly) so the sums
+    	cannot overflow, consistent with SeamEnergy.
+      \param energy
+      const cv::Mat&
+    	The energy map, already validated by the caller
+      \return cv::Mat
+      OpenCV matrix
+      returns the CV_64FC1 cumulative table M, the same size as energy
+    */
+    /************************************************************************/
     static cv::Mat BuildCumulative(const cv::Mat& energy)
     {
         const int rows = energy.rows;
@@ -60,14 +119,47 @@ namespace DP
         return M;
     }
 
+    /************************************************************************/
+    /*!
+      \brief
+    	validates the energy map, then builds its cumulative minimum energy
+    	table M for a vertical seam, where M[i][j] is the cheapest total energy
+    	of any seam from row 0 ending at (i, j)
+      \param energy
+      const cv::Mat&
+    	The energy map, a non-empty CV_32SC1 matrix with no negative values
+      \return cv::Mat
+      OpenCV matrix
+      returns the CV_64FC1 cumulative table M, the same size as energy
+      \exception std::invalid_argument
+    	thrown if energy is empty, is not CV_32SC1, or contains a negative value
+    */
+    /************************************************************************/
     cv::Mat CumulativeEnergy(const cv::Mat& energy)
     {
         CheckEnergy(energy, "DP::CumulativeEnergy");
         return BuildCumulative(energy);
     }
 
-    // Backtracking: start at the cheapest cell of the last row, then walk up,
-    // each time moving to whichever of the 3 cells above has the smallest M.
+    /************************************************************************/
+    /*!
+      \brief
+    	finds the minimum-energy vertical seam by dynamic programming.
+    	Backtracking: start at the cheapest cell of the last row, then walk up,
+    	each time moving to whichever of the 3 cells above has the smallest M.
+    	Ties are broken towards the left, both in the bottom row and on the way
+    	up, so the result is the leftmost of all minimum-energy seams.
+      \param energy
+      const cv::Mat&
+    	The energy map, a non-empty CV_32SC1 matrix with no negative values
+      \return std::vector<int>
+      vector of int
+      returns the seam, one entry per row: seam[i] is the column removed in
+      row i
+      \exception std::invalid_argument
+    	thrown if energy is empty, is not CV_32SC1, or contains a negative value
+    */
+    /************************************************************************/
     std::vector<int> FindVerticalSeam(const cv::Mat& energy)
     {
         CheckEnergy(energy, "DP::FindVerticalSeam");
@@ -100,9 +192,24 @@ namespace DP
         return seam;
     }
 
-    // A horizontal seam in the image is a vertical seam in the transposed
-    // image, so: transpose, find vertical seam, and read the result as
-    // "row index for every column".
+    /************************************************************************/
+    /*!
+      \brief
+    	finds the minimum-energy horizontal seam.
+    	A horizontal seam in the image is a vertical seam in the transposed
+    	image, so: transpose, find vertical seam, and read the result as
+    	"row index for every column".
+      \param energy
+      const cv::Mat&
+    	The energy map, a non-empty CV_32SC1 matrix with no negative values
+      \return std::vector<int>
+      vector of int
+      returns the seam, one entry per column: seam[j] is the row removed in
+      column j
+      \exception std::invalid_argument
+    	thrown if energy is empty, is not CV_32SC1, or contains a negative value
+    */
+    /************************************************************************/
     std::vector<int> FindHorizontalSeam(const cv::Mat& energy)
     {
         CheckEnergy(energy, "DP::FindHorizontalSeam");
@@ -111,6 +218,29 @@ namespace DP
         return FindVerticalSeam(energyT);
     }
 
+    /************************************************************************/
+    /*!
+      \brief
+    	checks that a seam fits the energy map and is connected, then adds up
+    	the energy of every pixel on it. Everything is validated before the
+    	matrix is read, because at() is only bounds-checked in Debug builds
+      \param energy
+      const cv::Mat&
+    	The energy map, a non-empty CV_32SC1 matrix with no negative values
+      \param seam
+      const std::vector<int>&
+    	The seam: a column per row if vertical, a row per column if not
+      \param vertical
+      bool
+    	true for a vertical seam, false for a horizontal seam
+      \return long long
+      64-bit integer
+      returns the total energy of the seam
+      \exception std::invalid_argument
+    	thrown if energy is invalid, the seam has the wrong length, an index is
+    	outside the image, or two consecutive entries differ by more than 1
+    */
+    /************************************************************************/
     long long SeamEnergy(const cv::Mat& energy, const std::vector<int>& seam, bool vertical)
     {
         CheckEnergy(energy, "DP::SeamEnergy");
@@ -146,6 +276,42 @@ namespace DP
     // ========================================================================
     // (c) Remove the seam and repeat: the shared loop with the DP seam finder
     // ========================================================================
+
+    /************************************************************************/
+    /*!
+      \brief
+    	shrinks an image to newWidth x newHeight by repeatedly removing the
+    	minimum energy seam found by dynamic programming. It runs the shared
+    	SeamCarving::CarveWith loop with FindVerticalSeam as the seam finder:
+    	vertical seams first, then horizontal seams on the transposed image,
+    	recomputing the energy map after every removal.
+      \param img
+      const cv::Mat&
+    	The image to shrink (it is not modified)
+      \param newWidth
+      int
+    	The target width, between 1 and img.cols
+      \param newHeight
+      int
+    	The target height, between 1 and img.rows
+      \param energy
+      EnergyType
+    	The energy to use: Backward (Sobel) or Forward
+      \param stats
+      CarveStats*
+    	Where timing, seam costs and recorded seams are added; may be nullptr
+      \param recordSeams
+      bool
+    	Whether to record every removed seam in original-image coordinates (only
+    	when stats is not null)
+      \return cv::Mat
+      OpenCV matrix
+      returns the resized image, the same type as img
+      \exception std::invalid_argument
+    	thrown if img is empty or the target size is not between 1 and the
+    	original size
+    */
+    /************************************************************************/
     cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight, EnergyType energy,
                   CarveStats* stats, bool recordSeams)
     {

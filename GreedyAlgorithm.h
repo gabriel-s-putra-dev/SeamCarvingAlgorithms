@@ -1,31 +1,54 @@
+/*!************************************************************************
+\file GreedyAlgorithm.h
+\author Asus
+\par DP email: ngylethan@gmail.com
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This header file contains the declarations for seam carving by a Greedy
+Algorithm.
+
+Seam carving by a Greedy Algorithm.
+
+Instead of the DP's globally optimal seam, the greedy seam is built by a
+purely local, row-by-row (or column-by-column) decision:
+  * VERTICAL seam: start at the minimum-energy pixel of row 0; in every
+    following row step to whichever of the three neighbours below
+    (down-left, down, down-right) has the lowest energy.
+  * HORIZONTAL seam: the same on columns - start at the minimum-energy pixel
+    of column 0, then step right / up-right / down-right.
+No look-ahead and no cumulative table, so one seam costs O(rows) (vertical)
+or O(cols) (horizontal) after the energy map, versus O(rows * cols) for DP.
+The price: the seam is NOT guaranteed optimal - its cost is always >= the
+DP / Graph Cut seam cost, and it can be trapped by a cheap pixel that leads
+into an expensive region.
+
+Tie-breaking (fixed so results are deterministic and testable):
+  * start pixel : lowest index among equal minima;
+  * each step   : prefer straight (down / right), then the smaller index
+                  (left / up), then the larger index (right / down).
+
+The energy map, seam removal, the carving loop and the seam overlay are
+shared with DP and Graph Cut (SeamCarving.h), so the three methods are
+compared on identical cost maps and differ only in how each seam is chosen.
+OpenCV is only used for image I/O, colour conversion and the Sobel filter;
+no content-aware resizing function from any library is used.
+- SeamResult
+a greedy seam and its total energy
+- FindVerticalSeam(energy)
+returns the greedy vertical seam of an energy map
+- FindHorizontalSeam(energy)
+returns the greedy horizontal seam of an energy map
+- Carve(img, newWidth, newHeight, energy, stats, recordSeams)
+shrinks an image by repeatedly removing the greedy seam
+- EnergyType, ComputeEnergy, RemoveVerticalSeam, RemoveHorizontalSeam, CarveStats, DrawSeams
+re-exported from SeamCarving.h
+**************************************************************************/
+
 #pragma once
-// ============================================================================
-// Seam carving by a Greedy Algorithm.
-//
-// Instead of the DP's globally optimal seam, the greedy seam is built by a
-// purely local, row-by-row (or column-by-column) decision:
-//   * VERTICAL seam: start at the minimum-energy pixel of row 0; in every
-//     following row step to whichever of the three neighbours below
-//     (down-left, down, down-right) has the lowest energy.
-//   * HORIZONTAL seam: the same on columns - start at the minimum-energy pixel
-//     of column 0, then step right / up-right / down-right.
-// No look-ahead and no cumulative table, so one seam costs O(rows) (vertical)
-// or O(cols) (horizontal) after the energy map, versus O(rows * cols) for DP.
-// The price: the seam is NOT guaranteed optimal - its cost is always >= the
-// DP / Graph Cut seam cost, and it can be trapped by a cheap pixel that leads
-// into an expensive region.
-//
-// Tie-breaking (fixed so results are deterministic and testable):
-//   * start pixel : lowest index among equal minima;
-//   * each step   : prefer straight (down / right), then the smaller index
-//                   (left / up), then the larger index (right / down).
-//
-// The energy map, seam removal, the carving loop and the seam overlay are
-// shared with DP and Graph Cut (SeamCarving.h), so the three methods are
-// compared on identical cost maps and differ only in how each seam is chosen.
-// OpenCV is only used for image I/O, colour conversion and the Sobel filter;
-// no content-aware resizing function from any library is used.
-// ============================================================================
+
+// ----- Headers ------------------------------------------------------- //
 #include "SeamCarving.h"
 
 #include <opencv2/core.hpp>

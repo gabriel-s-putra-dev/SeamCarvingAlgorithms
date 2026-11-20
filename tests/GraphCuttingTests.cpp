@@ -1,14 +1,35 @@
-// Correctness tests + quick benchmark for GraphCutting.cpp.
-// Build and run from the repo root:
-//   cmake --build --preset vs2022-release --target gc_tests
-//   out\build\vs2022\Release\gc_tests.exe     (or: ctest --preset vs2022-release)
-// or with g++:
-//   g++ -std=c++14 -O2 -I. tests/GraphCuttingTests.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_tests `pkg-config --cflags --libs opencv4`
-//
-// Key check: by the max-flow min-cut theorem, the graph-cut seam must have
-// EXACTLY the same total cost as the DP optimum on the same cost map. The
-// optimum comes from the team's DP (TeamDPCost in tests/Check.h), which is
-// itself checked against brute force in tests/SeamTests.cpp.
+/*!************************************************************************
+\file GraphCuttingTests.cpp
+\author GYQ-SIT
+\par DP email: 2301516@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+Correctness tests + quick benchmark for GraphCutting.cpp.
+Build and run from the repo root:
+  cmake --build --preset vs2022-release --target gc_tests
+  out\build\vs2022\Release\gc_tests.exe     (or: ctest --preset vs2022-release)
+or with g++:
+  g++ -std=c++14 -O2 -I. tests/GraphCuttingTests.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_tests `pkg-config --cflags --libs opencv4`
+
+Key check: by the max-flow min-cut theorem, the graph-cut seam must have
+EXACTLY the same total cost as the DP optimum on the same cost map. The
+optimum comes from the team's DP (TeamDPCost in tests/Check.h), which is
+itself checked against brute force in tests/SeamTests.cpp.
+- ValidSeam(seam, n)
+checks that a seam is in range and 8-connected
+- TestMaxFlowHandExamples() ... TestTowerImage()
+the ten test groups listed in main
+- TestImage()
+builds the random test image used by TestCarveLoop
+- Benchmark()
+prints one-seam timings on the tower image
+- main()
+runs every test, prints the summary, then runs the benchmark
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "Check.h"
 #include "GraphCutting.h"
 
@@ -24,6 +45,22 @@
 
 using namespace GraphCut;
 
+/************************************************************************/
+/*!
+  \brief
+	checks that every entry of a seam is a column in [0, n) and that
+	consecutive entries differ by at most 1
+  \param seam
+  const std::vector<int>&
+	The seam to check
+  \param n
+  int
+	The number of columns
+  \return bool
+  boolean
+  returns true if the seam is valid, false otherwise
+*/
+/************************************************************************/
 static bool ValidSeam(const std::vector<int>& seam, int n)
 {
     for (size_t i = 0; i < seam.size(); ++i)
@@ -37,6 +74,14 @@ static bool ValidSeam(const std::vector<int>& seam, int n)
 static const MaxFlowAlgorithm ALGOS[] = { MaxFlowAlgorithm::Dinic, MaxFlowAlgorithm::EdmondsKarp };
 
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	checks both max-flow solvers on hand-checked networks, including CLRS
+	Figure 26.1 (maximum flow 23)
+*/
+/************************************************************************/
 static void TestMaxFlowHandExamples()
 {
     // CLRS Figure 26.1: max flow 23.
@@ -60,6 +105,13 @@ static void TestMaxFlowHandExamples()
     }
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks that Dinic and Edmonds-Karp find the same maximum flow on 200
+	random flow networks
+*/
+/************************************************************************/
 static void TestAlgorithmsAgreeOnRandomGraphs()
 {
     std::mt19937 rng(1);
@@ -74,6 +126,13 @@ static void TestAlgorithmsAgreeOnRandomGraphs()
     }
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks, on 300 random cost maps per solver, that the graph-cut seam is
+	valid and its cost equals the team DP optimum
+*/
+/************************************************************************/
 static void TestRandomCostMapsMatchDP()
 {
     std::mt19937 rng(42);
@@ -91,6 +150,14 @@ static void TestRandomCostMapsMatchDP()
         }
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks single pixels, single rows and columns, all-zero and constant
+	maps and a zig-zag map: the graph-cut cost equals the DP optimum and the
+	seam is valid
+*/
+/************************************************************************/
 static void TestEdgeCases()
 {
     const std::vector<cv::Mat> cases = {
@@ -108,6 +175,13 @@ static void TestEdgeCases()
     }
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks that a zero-cost first or last column is removed, which needs the
+	virtual column in the seam graph
+*/
+/************************************************************************/
 static void TestFirstAndLastColumnRemovable()
 {
     cv::Mat c(6, 5, CV_32S, cv::Scalar(10));
@@ -123,6 +197,13 @@ static void TestFirstAndLastColumnRemovable()
     for (int j : r.seam) CHECK(j == 0);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks that free pixels which cannot be joined into one connected seam
+	are not chosen: the seam stays valid and costs the DP optimum
+*/
+/************************************************************************/
 static void TestConnectivityEnforced()
 {
     cv::Mat c(4, 6, CV_32S, cv::Scalar(100));
@@ -132,6 +213,12 @@ static void TestConnectivityEnforced()
     CHECK(r.cost == TeamDPCost(c) && r.cost > 0);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks the number of nodes and arcs BuildSeamGraph creates for a 7x9 map
+*/
+/************************************************************************/
 static void TestGraphSize()
 {
     const int m = 7, n = 9;
@@ -141,6 +228,13 @@ static void TestGraphSize()
     CHECK(net.NumArcs() == 2 * (2 * m + m * n + 2 * (m - 1) * (n - 1)));
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks a horizontal seam through a zero-cost row and a hand-checked
+	vertical seam removal
+*/
+/************************************************************************/
 static void TestHorizontalSeamAndRemoval()
 {
     cv::Mat c(5, 4, CV_32S, cv::Scalar(10));
@@ -155,6 +249,15 @@ static void TestHorizontalSeamAndRemoval()
     CHECK(cv::countNonZero(a != expect) == 0);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	builds a 30x24 random colour image with a white bar in columns 12-15
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_8UC3 test image
+*/
+/************************************************************************/
 static cv::Mat TestImage()
 {
     std::mt19937 rng(3);
@@ -166,6 +269,14 @@ static cv::Mat TestImage()
     return img;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks the energy maps, the carving loop (output size, recorded seams,
+	every removed pixel counted once), invalid arguments, invalid seams and
+	DrawSeams on mismatched stats
+*/
+/************************************************************************/
 static void TestCarveLoop()
 {
     const cv::Mat img = TestImage();
@@ -219,11 +330,16 @@ static void TestCarveLoop()
     CHECK(Throws([&] { DrawSeams(cv::Mat(24, 30, CV_32FC3), st); })); // not 8-bit
 }
 
-// Same image as the Python prototype: first seam cost must be 2446. Then carve
-// 80 seams with graph cut and, at EVERY step, check that the graph-cut seam cost
-// equals the DP optimum on the same current image. (When several seams tie, the
-// two methods may pick different optimal seams; that is fine. Graph cut always
-// returns the minimal source side, i.e. the leftmost optimal seam.)
+/************************************************************************/
+/*!
+  \brief
+	Same image as the Python prototype: first seam cost must be 2446. Then carve
+	80 seams with graph cut and, at EVERY step, check that the graph-cut seam cost
+	equals the DP optimum on the same current image. (When several seams tie, the
+	two methods may pick different optimal seams; that is fine. Graph cut always
+	returns the minimal source side, i.e. the leftmost optimal seam.)
+*/
+/************************************************************************/
 static void TestTowerImage()
 {
     const cv::Mat img = cv::imread("images/tower.png");
@@ -250,6 +366,15 @@ static void TestTowerImage()
 }
 
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	prints how long one vertical seam takes on the tower image with Dinic,
+	Edmonds-Karp and the team DP. Not a check; skipped if the image cannot
+	be read.
+*/
+/************************************************************************/
 static void Benchmark()
 {
     const cv::Mat img = cv::imread("images/tower.png");
@@ -272,6 +397,15 @@ static void Benchmark()
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
 }
 
+/************************************************************************/
+/*!
+  \brief
+	runs every test group, prints the summary, then runs the benchmark
+  \return int
+  integer
+  returns 0 if every check passed, 1 otherwise
+*/
+/************************************************************************/
 int main()
 {
     const int result = RunTests({

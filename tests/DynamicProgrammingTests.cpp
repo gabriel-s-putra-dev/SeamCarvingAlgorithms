@@ -1,10 +1,31 @@
-// Correctness tests for step (a): the energy map, SeamCarving::ComputeEnergy
-// (shared by DP, Greedy and Graph Cut; called here through the DP module).
-// Build and run from the repo root:
-//   cmake --build --preset vs2022-release --target dp_tests
-//   out\build\vs2022\Release\dp_tests.exe     (or: ctest --preset vs2022-release)
-// or with g++:
-//   g++ -std=c++14 -O2 -I. tests/DynamicProgrammingTests.cpp SeamCarving.cpp DynamicProgramming.cpp GraphCutting.cpp GreedyAlgorithm.cpp -o dp_tests `pkg-config --cflags --libs opencv4`
+/*!************************************************************************
+\file DynamicProgrammingTests.cpp
+\author Gabriel Sebastian Putra
+\par DP email: gabrielsebastian.p@digipen.edu
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+This source file contains the tests for step (a), the energy map.
+
+Correctness tests for step (a): the energy map, SeamCarving::ComputeEnergy
+(shared by DP, Greedy and Graph Cut; called here through the DP module).
+Build and run from the repo root:
+  cmake --build --preset vs2022-release --target dp_tests
+  out\build\vs2022\Release\dp_tests.exe     (or: ctest --preset vs2022-release)
+or with g++:
+  g++ -std=c++14 -O2 -I. tests/DynamicProgrammingTests.cpp SeamCarving.cpp DynamicProgramming.cpp GraphCutting.cpp GreedyAlgorithm.cpp -o dp_tests `pkg-config --cflags --libs opencv4`
+- SameMat(a, b)
+checks whether two matrices are identical
+- RandomGray(rows, cols, rng)
+builds a random grayscale image
+- TestTypeSizeNonNegative() ... TestSharedEnergyFunction()
+the eight test groups listed in main
+- main()
+runs every test and prints the summary
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "Check.h"
 #include "DynamicProgramming.h"
 #include "GraphCutting.h"
@@ -21,11 +42,44 @@
 
 static const DP::EnergyType TYPES[] = { DP::EnergyType::Backward, DP::EnergyType::Forward };
 
+/************************************************************************/
+/*!
+  \brief
+	checks whether two matrices have the same size, type and values
+  \param a
+  const cv::Mat&
+	The first matrix
+  \param b
+  const cv::Mat&
+	The second matrix
+  \return bool
+  boolean
+  returns true if the matrices are identical, false otherwise
+*/
+/************************************************************************/
 static bool SameMat(const cv::Mat& a, const cv::Mat& b)
 {
     return a.size() == b.size() && a.type() == b.type() && cv::countNonZero(a != b) == 0;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	builds a grayscale image with uniformly random pixel values
+  \param rows
+  int
+	The number of rows
+  \param cols
+  int
+	The number of columns
+  \param rng
+  std::mt19937&
+	The random number generator to draw the pixel values from
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_8UC1 image
+*/
+/************************************************************************/
 static cv::Mat RandomGray(int rows, int cols, std::mt19937& rng)
 {
     cv::Mat img(rows, cols, CV_8UC1);
@@ -35,7 +89,12 @@ static cv::Mat RandomGray(int rows, int cols, std::mt19937& rng)
     return img;
 }
 
-// Output is CV_32SC1, same size as the input, and never negative.
+/************************************************************************/
+/*!
+  \brief
+	Output is CV_32SC1, same size as the input, and never negative.
+*/
+/************************************************************************/
 static void TestTypeSizeNonNegative()
 {
     std::mt19937 rng(1);
@@ -52,7 +111,12 @@ static void TestTypeSizeNonNegative()
         }
 }
 
-// A flat image has no gradient anywhere.
+/************************************************************************/
+/*!
+  \brief
+	A flat image has no gradient anywhere.
+*/
+/************************************************************************/
 static void TestConstantImageIsZero()
 {
     const cv::Mat img(6, 9, CV_8UC3, cv::Scalar(37, 120, 201));
@@ -60,10 +124,15 @@ static void TestConstantImageIsZero()
         CHECK(cv::countNonZero(DP::ComputeEnergy(img, t)) == 0);
 }
 
-// 5x8 image, columns 0..3 = 0, columns 4..7 = 100.
-// Backward: Sobel_x = 1*(100) + 2*(100) + 1*(100) = 400 at columns 3 and 4,
-// 0 elsewhere (reflected borders keep the outer columns flat); Sobel_y = 0.
-// Forward : |I[j+1] - I[j-1]| = 100 at columns 3 and 4, 0 elsewhere.
+/************************************************************************/
+/*!
+  \brief
+	5x8 image, columns 0..3 = 0, columns 4..7 = 100.
+	Backward: Sobel_x = 1*(100) + 2*(100) + 1*(100) = 400 at columns 3 and 4,
+	0 elsewhere (reflected borders keep the outer columns flat); Sobel_y = 0.
+	Forward : |I[j+1] - I[j-1]| = 100 at columns 3 and 4, 0 elsewhere.
+*/
+/************************************************************************/
 static void TestVerticalStepEdge()
 {
     cv::Mat img(5, 8, CV_8UC1, cv::Scalar(0));
@@ -79,8 +148,13 @@ static void TestVerticalStepEdge()
         }
 }
 
-// Same edge rotated 90 degrees: only Sobel_y responds, so Backward is
-// symmetric; Forward is purely horizontal, so it sees nothing.
+/************************************************************************/
+/*!
+  \brief
+	Same edge rotated 90 degrees: only Sobel_y responds, so Backward is
+	symmetric; Forward is purely horizontal, so it sees nothing.
+*/
+/************************************************************************/
 static void TestHorizontalStepEdge()
 {
     cv::Mat img(8, 5, CV_8UC1, cv::Scalar(0));
@@ -96,9 +170,14 @@ static void TestHorizontalStepEdge()
         }
 }
 
-// Hand-checked forward costs, including both borders.
-//   row      : 10  20  50  40  40
-//   expected : |20-10| |50-10| |40-20| |40-50| |40-40| = 10 40 20 10 0
+/************************************************************************/
+/*!
+  \brief
+	Hand-checked forward costs, including both borders.
+	  row      : 10  20  50  40  40
+	  expected : |20-10| |50-10| |40-20| |40-50| |40-40| = 10 40 20 10 0
+*/
+/************************************************************************/
 static void TestForwardHandValues()
 {
     const cv::Mat img = (cv::Mat_<uchar>(1, 5) << 10, 20, 50, 40, 40);
@@ -117,7 +196,12 @@ static void TestForwardHandValues()
         for (int j = 0; j < 4; ++j) CHECK(e2.at<int>(i, j) == expected2[i][j]);
 }
 
-// 1-, 3- and 4-channel inputs with the same gray level give the same energy.
+/************************************************************************/
+/*!
+  \brief
+	1-, 3- and 4-channel inputs with the same gray level give the same energy.
+*/
+/************************************************************************/
 static void TestChannelCounts()
 {
     std::mt19937 rng(7);
@@ -133,6 +217,13 @@ static void TestChannelCounts()
     }
 }
 
+/************************************************************************/
+/*!
+  \brief
+	checks that an empty image throws std::invalid_argument, for both energy
+	types
+*/
+/************************************************************************/
 static void TestEmptyThrows()
 {
     for (DP::EnergyType t : TYPES)
@@ -144,9 +235,14 @@ static void TestEmptyThrows()
     }
 }
 
-// DP, Greedy and Graph Cut must see exactly the same cost map. They used to
-// have separate copies (compared pixel for pixel here); now all three modules
-// re-export the one shared function, so check that it really is the same one.
+/************************************************************************/
+/*!
+  \brief
+	DP, Greedy and Graph Cut must see exactly the same cost map. They used to
+	have separate copies (compared pixel for pixel here); now all three modules
+	re-export the one shared function, so check that it really is the same one.
+*/
+/************************************************************************/
 static void TestSharedEnergyFunction()
 {
     using Fn = cv::Mat (*)(const cv::Mat&, SeamCarving::EnergyType);
@@ -169,6 +265,15 @@ static void TestSharedEnergyFunction()
     }
 }
 
+/************************************************************************/
+/*!
+  \brief
+	runs every test group and prints the summary
+  \return int
+  integer
+  returns 0 if every check passed, 1 otherwise
+*/
+/************************************************************************/
 int main()
 {
     return RunTests({

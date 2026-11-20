@@ -1,26 +1,61 @@
-// Benchmark + raw comparison data for GreedyAlgorithm.cpp. Build from the repo root
-// (CMake installs OpenCV itself through vcpkg on the first configure):
-//   Windows:       cmake --preset vs2022
-//                  cmake --build --preset vs2022-release --target greedy_bench
-//                  out\build\vs2022\Release\greedy_bench.exe
-//   Linux / macOS: cmake --preset unix-release
-//                  cmake --build --preset unix-release --target greedy_bench
-//                  out/build/unix-release/greedy_bench
-// Run it from the repository root (writes docs/Greedy/results/).
-// Then draw the timing chart:  python tools/plot_greedy_timing.py
-//
-// "DP" below is the team's DynamicProgramming.cpp (DP::FindVerticalSeam).
-// Graph Cut (Dinic) is included as an independent check: it is optimal too, so
-// its seam cost must equal DP's.
-//
-// Outputs (docs/Greedy/results/):
-//   single_seam_timing.csv  time to find ONE vertical seam vs image size
-//   seam_cost.csv           first-seam cost: greedy vs optimal, both energies
-//   full_resize.csv         time + total cost of a full resize per method
-//   seam_costs.csv          cost of every removed seam, per method (for plots)
-//   compare_<img>.png       original | Greedy | DP | Graph Cut results
-//   seams_<img>.png         removed seams drawn on the original, per method
-//   greedy_both_directions.png  greedy, vertical + horizontal seams
+/*!************************************************************************
+\file GreedyBenchmark.cpp
+\author Asus, xy236
+\par DP email: ngylethan@gmail.com, 63993933+xy236@users.noreply.github.com
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+Benchmark + raw comparison data for GreedyAlgorithm.cpp. Build from the repo root
+(CMake installs OpenCV itself through vcpkg on the first configure):
+  Windows:       cmake --preset vs2022
+                 cmake --build --preset vs2022-release --target greedy_bench
+                 out\build\vs2022\Release\greedy_bench.exe
+  Linux / macOS: cmake --preset unix-release
+                 cmake --build --preset unix-release --target greedy_bench
+                 out/build/unix-release/greedy_bench
+Run it from the repository root (writes docs/Greedy/results/).
+Then draw the timing chart:  python tools/plot_greedy_timing.py
+
+"DP" below is the team's DynamicProgramming.cpp (DP::FindVerticalSeam).
+Graph Cut (Dinic) is included as an independent check: it is optimal too, so
+its seam cost must equal DP's.
+
+Outputs (docs/Greedy/results/):
+  single_seam_timing.csv  time to find ONE vertical seam vs image size
+  seam_cost.csv           first-seam cost: greedy vs optimal, both energies
+  full_resize.csv         time + total cost of a full resize per method
+  seam_costs.csv          cost of every removed seam, per method (for plots)
+  compare_<img>.png       original | Greedy | DP | Graph Cut results
+  seams_<img>.png         removed seams drawn on the original, per method
+  greedy_both_directions.png  greedy, vertical + horizontal seams
+- OpenCsv(name)
+opens a results CSV for writing or exits with a message
+- GreedySeam(c), TeamDP(c), GCSeam(c)
+the three seam finders wrapped as SeamFinder
+- Seconds(t0)
+returns the seconds elapsed since a time point
+- Shrink(img, w)
+scales an image to a width, keeping the aspect ratio
+- EnergyName(e)
+returns the name of an energy type
+- SingleSeamTiming(img)
+times one seam per method across image sizes
+- FirstSeamCost(images)
+compares the first greedy seam's cost with the optimum
+- CarveGreedy(img, k, st), CarveDP(img, k, st), CarveGC(img, k, st)
+remove k vertical seams per method
+- Label(img, text)
+adds a caption above an image
+- SideBySide(images, gap)
+places images next to each other
+- FullResize(name, img, k, csv, perSeam)
+carves one image with every method and saves the comparison
+- main()
+runs the benchmarks and writes docs/Greedy/results/
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "DynamicProgramming.h"
 #include "GraphCutting.h"
 #include "GreedyAlgorithm.h"
@@ -39,8 +74,19 @@
 
 static const std::string OUT = "docs/Greedy/results/";
 
-// Opens OUT + name for writing. Exits with a clear message instead of crashing
-// if the file cannot be opened (e.g. the CSV is open in Excel, which locks it).
+/************************************************************************/
+/*!
+  \brief
+	Opens OUT + name for writing. Exits with a clear message instead of crashing
+	if the file cannot be opened (e.g. the CSV is open in Excel, which locks it).
+  \param name
+  const std::string&
+	The file name inside docs/Greedy/results/
+  \return FILE*
+  C file handle
+  returns the open file (the program exits if it cannot be opened)
+*/
+/************************************************************************/
 static FILE* OpenCsv(const std::string& name)
 {
     FILE* f = std::fopen((OUT + name).c_str(), "w");
@@ -58,14 +104,39 @@ using SeamFinder = std::function<Seam(const cv::Mat&)>;
 // ---------------------------------------------------------------------------
 // Seam finders (vertical seam on a CV_32S energy map)
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	the team's greedy seam finder (GreedyAlgorithm.cpp) wrapped as a
+	SeamFinder
+  \param c
+  const cv::Mat&
+	The CV_32SC1 cost (energy) map
+  \return Seam
+  seam
+  returns the seam (one column per row) and its total cost
+*/
+/************************************************************************/
 static Seam GreedySeam(const cv::Mat& c)
 {
     Greedy::SeamResult r = Greedy::FindVerticalSeam(c);
     return Seam{ r.seam, r.cost };
 }
 
-// Team DP (DynamicProgramming.cpp) wrapped as a SeamFinder, the same way
-// tests/GraphCuttingBenchmark.cpp does it.
+/************************************************************************/
+/*!
+  \brief
+	Team DP (DynamicProgramming.cpp) wrapped as a SeamFinder, the same way
+	tests/GraphCuttingBenchmark.cpp does it.
+  \param c
+  const cv::Mat&
+	The CV_32SC1 cost (energy) map
+  \return Seam
+  seam
+  returns the seam (one column per row) and its total cost
+*/
+/************************************************************************/
 static Seam TeamDP(const cv::Mat& c)
 {
     Seam s{ DP::FindVerticalSeam(c), 0 };
@@ -73,6 +144,19 @@ static Seam TeamDP(const cv::Mat& c)
     return s;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	the team's graph-cut seam finder (GraphCutting.cpp, Dinic) wrapped as a
+	SeamFinder
+  \param c
+  const cv::Mat&
+	The CV_32SC1 cost (energy) map
+  \return Seam
+  seam
+  returns the seam (one column per row) and its total cost
+*/
+/************************************************************************/
 static Seam GCSeam(const cv::Mat& c)
 {
     GraphCut::SeamResult r = GraphCut::FindVerticalSeam(c, GraphCut::MaxFlowAlgorithm::Dinic);
@@ -80,11 +164,40 @@ static Seam GCSeam(const cv::Mat& c)
 }
 
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	measures how much time has passed since a given time point
+  \param t0
+  std::chrono::steady_clock::time_point
+	The starting time point
+  \return double
+  double
+  returns the elapsed time in seconds
+*/
+/************************************************************************/
 static double Seconds(std::chrono::steady_clock::time_point t0)
 {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
 }
 
+/************************************************************************/
+/*!
+  \brief
+	scales an image to the given width with area interpolation, keeping the
+	aspect ratio (plain scaling, not seam carving)
+  \param img
+  const cv::Mat&
+	The image to scale
+  \param w
+  int
+	The new width
+  \return cv::Mat
+  OpenCV matrix
+  returns the scaled image
+*/
+/************************************************************************/
 static cv::Mat Shrink(const cv::Mat& img, int w)
 {
     const int h = static_cast<int>(std::lround(double(w) * img.rows / img.cols));
@@ -93,6 +206,18 @@ static cv::Mat Shrink(const cv::Mat& img, int w)
     return small;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	gets the name of an energy type for the CSV files and the console
+  \param e
+  DP::EnergyType
+	The energy type
+  \return const char*
+  C string
+  returns "forward" or "backward"
+*/
+/************************************************************************/
 static const char* EnergyName(DP::EnergyType e)
 {
     return e == DP::EnergyType::Forward ? "forward" : "backward";
@@ -101,6 +226,19 @@ static const char* EnergyName(DP::EnergyType e)
 // ---------------------------------------------------------------------------
 // 1. Time to find one seam (energy map excluded) vs image size
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	times one vertical seam (energy map excluded) with Greedy, DP and Graph
+	Cut (up to 600 wide) on the tower image scaled to widths from 30 to
+	2000, repeating fast methods to report a stable average, and writes
+	single_seam_timing.csv
+  \param img
+  const cv::Mat&
+	The tower image
+*/
+/************************************************************************/
 static void SingleSeamTiming(const cv::Mat& img)
 {
     struct M { const char* name; SeamFinder f; int maxWidth; double minSeconds; };
@@ -136,6 +274,18 @@ static void SingleSeamTiming(const cv::Mat& img)
 // ---------------------------------------------------------------------------
 // 2. First-seam cost: how far from optimal is the greedy seam?
 // ---------------------------------------------------------------------------
+
+/************************************************************************/
+/*!
+  \brief
+	for each image and both energies, compares the first greedy seam's cost
+	with the DP and Graph Cut optimum, writes seam_cost.csv and warns if the
+	results are inconsistent
+  \param images
+  const std::vector<std::pair<std::string, cv::Mat>>&
+	The named sample images
+*/
+/************************************************************************/
 static void FirstSeamCost(const std::vector<std::pair<std::string, cv::Mat>>& images)
 {
     FILE* f = OpenCsv("seam_cost.csv");
@@ -164,22 +314,94 @@ static void FirstSeamCost(const std::vector<std::pair<std::string, cv::Mat>>& im
 // ---------------------------------------------------------------------------
 using CarveFn = std::function<cv::Mat(const cv::Mat& img, int k, SeamCarving::CarveStats* st)>;
 
+/************************************************************************/
+/*!
+  \brief
+	removes k vertical seams with Greedy::Carve (backward energy), recording
+	the seams
+  \param img
+  const cv::Mat&
+	The image to carve
+  \param k
+  int
+	The number of vertical seams to remove
+  \param st
+  SeamCarving::CarveStats*
+	Receives the time, costs and recorded seams
+  \return cv::Mat
+  OpenCV matrix
+  returns the carved image, k columns narrower
+*/
+/************************************************************************/
 static cv::Mat CarveGreedy(const cv::Mat& img, int k, SeamCarving::CarveStats* st)
 {
     return Greedy::Carve(img, img.cols - k, img.rows, SeamCarving::EnergyType::Backward, st, true);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	removes k vertical seams with DP::Carve (backward energy), recording the
+	seams
+  \param img
+  const cv::Mat&
+	The image to carve
+  \param k
+  int
+	The number of vertical seams to remove
+  \param st
+  SeamCarving::CarveStats*
+	Receives the time, costs and recorded seams
+  \return cv::Mat
+  OpenCV matrix
+  returns the carved image, k columns narrower
+*/
+/************************************************************************/
 static cv::Mat CarveDP(const cv::Mat& img, int k, SeamCarving::CarveStats* st)
 {
     return DP::Carve(img, img.cols - k, img.rows, SeamCarving::EnergyType::Backward, st, true);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	removes k vertical seams with GraphCut::Carve (Dinic, backward energy),
+	recording the seams
+  \param img
+  const cv::Mat&
+	The image to carve
+  \param k
+  int
+	The number of vertical seams to remove
+  \param st
+  SeamCarving::CarveStats*
+	Receives the time, costs and recorded seams
+  \return cv::Mat
+  OpenCV matrix
+  returns the carved image, k columns narrower
+*/
+/************************************************************************/
 static cv::Mat CarveGC(const cv::Mat& img, int k, SeamCarving::CarveStats* st)
 {
     return GraphCut::Carve(img, img.cols - k, img.rows, GraphCut::MaxFlowAlgorithm::Dinic,
                            SeamCarving::EnergyType::Backward, st, true);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	adds a white strip with a caption above an image
+  \param img
+  const cv::Mat&
+	The image to label
+  \param text
+  const std::string&
+	The caption
+  \return cv::Mat
+  OpenCV matrix
+  returns the image with the caption strip on top
+*/
+/************************************************************************/
 static cv::Mat Label(const cv::Mat& img, const std::string& text)
 {
     cv::Mat pad(22, img.cols, img.type(), cv::Scalar(255, 255, 255));
@@ -189,6 +411,21 @@ static cv::Mat Label(const cv::Mat& img, const std::string& text)
     return out;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	places images next to each other on a white canvas, top-aligned
+  \param images
+  const std::vector<cv::Mat>&
+	The CV_8UC3 images, left to right
+  \param gap
+  int
+	The number of white pixels between neighbouring images, default 8
+  \return cv::Mat
+  OpenCV matrix
+  returns the combined CV_8UC3 image
+*/
+/************************************************************************/
 static cv::Mat SideBySide(const std::vector<cv::Mat>& images, int gap = 8)
 {
     int h = 0, w = 0;
@@ -203,6 +440,30 @@ static cv::Mat SideBySide(const std::vector<cv::Mat>& images, int gap = 8)
     return canvas;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	removes k vertical seams from one image with Greedy, DP and Graph Cut,
+	writes the times and total cost of each to full_resize.csv and every
+	seam's cost to seam_costs.csv, saves the results and all removed seams
+	side by side, and prints how many seams Greedy shares with DP
+  \param name
+  const std::string&
+	The image name used in the CSV and file names
+  \param img
+  const cv::Mat&
+	The image to carve
+  \param k
+  int
+	The number of vertical seams to remove
+  \param csv
+  FILE*
+	The open full_resize.csv file
+  \param perSeam
+  FILE*
+	The open seam_costs.csv file
+*/
+/************************************************************************/
 static void FullResize(const std::string& name, const cv::Mat& img, int k, FILE* csv, FILE* perSeam)
 {
     struct M { const char* name; CarveFn carve; };
@@ -240,6 +501,18 @@ static void FullResize(const std::string& name, const cv::Mat& img, int k, FILE*
     std::printf("  %-10s Greedy vs DP: %d/%d seams identical\n", name.c_str(), identical, k);
 }
 
+/************************************************************************/
+/*!
+  \brief
+	loads the sample images, checks that the results folder is writable,
+	then runs the single-seam timing, first-seam cost and full-resize
+	benchmarks and saves the greedy both-directions figure
+  \return int
+  integer
+  returns 0 on success, 1 if the images or the results folder cannot be
+  used
+*/
+/************************************************************************/
 int main()
 {
     const cv::Mat tower = cv::imread("images/tower.png");

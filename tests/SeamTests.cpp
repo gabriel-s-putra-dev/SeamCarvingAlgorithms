@@ -1,14 +1,37 @@
-// ============================================================================
-// Tests for part (b): DP minimum seam (vertical and horizontal).
-// No test framework needed (see tests/Check.h): build it, run it, and it
-// prints any failures and "N checks passed, M failed".
-//
-// CMake target: seam_tests (see CMakeLists.txt). Without CMake:
-//   g++ -std=c++14 -I. tests/SeamTests.cpp SeamCarving.cpp DynamicProgramming.cpp \
-//       $(pkg-config --cflags --libs opencv4) -o seam_tests
-// Restored from commit a5cf885 (it had been overwritten by a copy of
-// DynamicProgramming.cpp) and updated for the 64-bit cumulative table.
-// ============================================================================
+/*!************************************************************************
+\file SeamTests.cpp
+\author Ho Jun
+\par DP email: 2401700@sit.singaporetech.edu.sg
+\par Course: csd3131
+\par Algorithm Analysis
+\date 20-11-2026
+\brief
+Tests for part (b): DP minimum seam (vertical and horizontal).
+No test framework needed (see tests/Check.h): build it, run it, and it
+prints any failures and "N checks passed, M failed".
+
+CMake target: seam_tests (see CMakeLists.txt). Without CMake:
+  g++ -std=c++14 -I. tests/SeamTests.cpp SeamCarving.cpp DynamicProgramming.cpp \
+      $(pkg-config --cflags --libs opencv4) -o seam_tests
+Restored from commit a5cf885 (it had been overwritten by a copy of
+DynamicProgramming.cpp) and updated for the 64-bit cumulative table.
+- MakeEnergy(rows, cols, v)
+builds a CV_32SC1 matrix from a flat list of values
+- IsValidSeam(seam, length, limit)
+checks the shape of a vertical seam
+- BestFrom(e, i, j)
+brute-force cheapest path from (i, j) to the bottom row
+- BruteForceVertical(e)
+brute-force cheapest vertical seam
+- Transposed(m)
+returns the transpose of a matrix
+- TestHandWorkedExample() ... TestNoOverflow()
+the nine test groups listed in main
+- main()
+runs every test and prints the summary
+**************************************************************************/
+
+// ----- Headers ------------------------------------------------------- //
 #include "Check.h"
 #include "DynamicProgramming.h"
 
@@ -23,7 +46,25 @@
 #include <vector>
 
 // ---------------------------------------------------------------- helpers --
-// Build a CV_32SC1 matrix from a flat row-major list of values.
+
+/************************************************************************/
+/*!
+  \brief
+	Build a CV_32SC1 matrix from a flat row-major list of values.
+  \param rows
+  int
+	The number of rows
+  \param cols
+  int
+	The number of columns
+  \param v
+  const std::vector<int>&
+	The rows * cols values, row by row
+  \return cv::Mat
+  OpenCV matrix
+  returns the CV_32SC1 matrix
+*/
+/************************************************************************/
 static cv::Mat MakeEnergy(int rows, int cols, const std::vector<int>& v)
 {
     cv::Mat m(rows, cols, CV_32SC1);
@@ -33,7 +74,24 @@ static cv::Mat MakeEnergy(int rows, int cols, const std::vector<int>& v)
     return m;
 }
 
-// A valid vertical seam: one column per row, in range, steps of at most 1.
+/************************************************************************/
+/*!
+  \brief
+	A valid vertical seam: one column per row, in range, steps of at most 1.
+  \param seam
+  const std::vector<int>&
+	The seam to check
+  \param length
+  int
+	The length the seam must have
+  \param limit
+  int
+	Every entry must be in [0, limit)
+  \return bool
+  boolean
+  returns true if the seam is valid, false otherwise
+*/
+/************************************************************************/
 static bool IsValidSeam(const std::vector<int>& seam, int length, int limit)
 {
     if (static_cast<int>(seam.size()) != length) return false;
@@ -45,8 +103,27 @@ static bool IsValidSeam(const std::vector<int>& seam, int length, int limit)
     return true;
 }
 
-// Brute force: try EVERY vertical path (3^rows paths, fine for tiny inputs)
-// and return the cheapest total energy. This is the "ground truth".
+/************************************************************************/
+/*!
+  \brief
+	Brute force: try EVERY vertical path (3^rows paths, fine for tiny inputs)
+	and return the cheapest total energy. This is the "ground truth".
+	Recursive helper: the cheapest path starting at (i, j) and going down to
+	the last row.
+  \param e
+  const cv::Mat&
+	The CV_32SC1 energy map
+  \param i
+  int
+	The row of the starting pixel
+  \param j
+  int
+	The column of the starting pixel
+  \return long long
+  64-bit integer
+  returns the cheapest total energy from (i, j) to the bottom row
+*/
+/************************************************************************/
 static long long BestFrom(const cv::Mat& e, int i, int j)
 {
     long long here = e.at<int>(i, j);
@@ -61,6 +138,19 @@ static long long BestFrom(const cv::Mat& e, int i, int j)
     return here + best;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	finds the cheapest vertical seam by brute force, starting BestFrom at
+	every pixel of row 0
+  \param e
+  const cv::Mat&
+	The CV_32SC1 energy map
+  \return long long
+  64-bit integer
+  returns the minimum seam energy
+*/
+/************************************************************************/
 static long long BruteForceVertical(const cv::Mat& e)
 {
     long long best = std::numeric_limits<long long>::max();
@@ -69,6 +159,18 @@ static long long BruteForceVertical(const cv::Mat& e)
     return best;
 }
 
+/************************************************************************/
+/*!
+  \brief
+	returns the transpose of a matrix
+  \param m
+  const cv::Mat&
+	The matrix to transpose
+  \return cv::Mat
+  OpenCV matrix
+  returns the transposed copy
+*/
+/************************************************************************/
 static cv::Mat Transposed(const cv::Mat& m)
 {
     cv::Mat t;
@@ -78,7 +180,12 @@ static cv::Mat Transposed(const cv::Mat& m)
 
 // ------------------------------------------------------------------ tests --
 
-// 1. A 3x3 example worked out by hand.
+/************************************************************************/
+/*!
+  \brief
+	1. A 3x3 example worked out by hand.
+*/
+/************************************************************************/
 static void TestHandWorkedExample()
 {
     const cv::Mat e = MakeEnergy(3, 3, { 1, 2, 3,
@@ -100,7 +207,12 @@ static void TestHandWorkedExample()
     CHECK(DP::SeamEnergy(e, seam, true) == 3);
 }
 
-// 2. Horizontal seam of a matrix == vertical seam of its transpose.
+/************************************************************************/
+/*!
+  \brief
+	2. Horizontal seam of a matrix == vertical seam of its transpose.
+*/
+/************************************************************************/
 static void TestHorizontalMatchesTranspose()
 {
     const cv::Mat e = MakeEnergy(3, 3, { 1, 2, 3,
@@ -114,7 +226,12 @@ static void TestHorizontalMatchesTranspose()
     CHECK(DP::SeamEnergy(e, hSeam, false) == 3);
 }
 
-// 3. The seam must avoid a wall of high energy, and ties go to the left.
+/************************************************************************/
+/*!
+  \brief
+	3. The seam must avoid a wall of high energy, and ties go to the left.
+*/
+/************************************************************************/
 static void TestAvoidsHighEnergyColumn()
 {
     cv::Mat e = cv::Mat::zeros(5, 6, CV_32SC1);
@@ -130,7 +247,12 @@ static void TestAvoidsHighEnergyColumn()
     CHECK(DP::SeamEnergy(t, h, false) == 0);
 }
 
-// 4. Seam shape is always valid on random input.
+/************************************************************************/
+/*!
+  \brief
+	4. Seam shape is always valid on random input.
+*/
+/************************************************************************/
 static void TestSeamValidityRandom()
 {
     std::mt19937 rng(12345);
@@ -149,7 +271,12 @@ static void TestSeamValidityRandom()
     }
 }
 
-// 5. The most important test: DP must match brute force on small matrices.
+/************************************************************************/
+/*!
+  \brief
+	5. The most important test: DP must match brute force on small matrices.
+*/
+/************************************************************************/
 static void TestOptimalityVsBruteForce()
 {
     std::mt19937 rng(2024);
@@ -172,7 +299,12 @@ static void TestOptimalityVsBruteForce()
     }
 }
 
-// 6. Tiny and degenerate shapes.
+/************************************************************************/
+/*!
+  \brief
+	6. Tiny and degenerate shapes.
+*/
+/************************************************************************/
 static void TestEdgeCases()
 {
 
@@ -191,7 +323,12 @@ static void TestEdgeCases()
     CHECK((DP::FindHorizontalSeam(colOnly) == std::vector<int>{ 1 }));
 }
 
-// 7. Bad input must throw instead of crashing.
+/************************************************************************/
+/*!
+  \brief
+	7. Bad input must throw instead of crashing.
+*/
+/************************************************************************/
 static void TestInvalidInput()
 {
 
@@ -229,7 +366,12 @@ static void TestInvalidInput()
     CHECK(Throws([&] { DP::SeamEnergy(neg, { 0, 0 }, true); }));
 }
 
-// 9. The 64-bit table: sums beyond INT_MAX stay exact (no overflow).
+/************************************************************************/
+/*!
+  \brief
+	9. The 64-bit table: sums beyond INT_MAX stay exact (no overflow).
+*/
+/************************************************************************/
 static void TestNoOverflow()
 {
     const int rows = 10, big = INT_MAX / 2;
@@ -245,7 +387,12 @@ static void TestNoOverflow()
     CHECK(DP::SeamEnergy(e, seam, true) == expected);
 }
 
-// 8. Integration with part (a): real ComputeEnergy output on a tiny image.
+/************************************************************************/
+/*!
+  \brief
+	8. Integration with part (a): real ComputeEnergy output on a tiny image.
+*/
+/************************************************************************/
 static void TestWithComputeEnergy()
 {
 
@@ -264,6 +411,15 @@ static void TestWithComputeEnergy()
     }
 }
 
+/************************************************************************/
+/*!
+  \brief
+	runs every test group and prints the summary
+  \return int
+  integer
+  returns 0 if every check passed, 1 otherwise
+*/
+/************************************************************************/
 int main()
 {
     return RunTests({
