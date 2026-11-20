@@ -5,4 +5,5 @@ out/
 CMakeUserPresets.json
 
 # Personal editor settings (paths differ per machine)
-.vscode/
+.vscode/*
+!.vscode/c_cpp_properties.json
