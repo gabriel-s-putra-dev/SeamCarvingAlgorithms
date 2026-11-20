@@ -9,11 +9,9 @@
 // Run it from the repository root (writes docs/Greedy/results/).
 // Then draw the timing chart:  python tools/plot_greedy_timing.py
 //
-// "DP (ref)" below is a small REFERENCE dynamic-programming seam finder so the
-// greedy seams can be compared before DynamicProgramming.cpp step (b) exists.
-// When DP::FindVerticalSeam is available, replace RefDP with it. Graph Cut
-// (Dinic) is included as an independent check: it is optimal too, so its seam
-// cost must equal DP's.
+// "DP" below is the team's DynamicProgramming.cpp (DP::FindVerticalSeam).
+// Graph Cut (Dinic) is included as an independent check: it is optimal too, so
+// its seam cost must equal DP's.
 //
 // Outputs (docs/Greedy/results/):
 //   single_seam_timing.csv  time to find ONE vertical seam vs image size
@@ -52,29 +50,12 @@ static Seam GreedySeam(const cv::Mat& c)
     return Seam{ r.seam, r.cost };
 }
 
-static Seam RefDP(const cv::Mat& c)
+// Team DP (DynamicProgramming.cpp) wrapped as a SeamFinder, the same way
+// tests/GraphCuttingBenchmark.cpp does it.
+static Seam TeamDP(const cv::Mat& c)
 {
-    const int m = c.rows, n = c.cols;
-    std::vector<int64_t> M(static_cast<size_t>(m) * n);
-    std::vector<int> back(static_cast<size_t>(m) * n, 0);
-    for (int j = 0; j < n; ++j) M[j] = c.at<int>(0, j);
-    for (int i = 1; i < m; ++i)
-    {
-        const int* row = c.ptr<int>(i);
-        for (int j = 0; j < n; ++j)
-        {
-            int best = -1;   // ties -> leftmost
-            for (int k = std::max(j - 1, 0); k <= std::min(j + 1, n - 1); ++k)
-                if (best < 0 || M[(i - 1) * n + k] < M[(i - 1) * n + best]) best = k;
-            M[i * n + j] = row[j] + M[(i - 1) * n + best];
-            back[i * n + j] = best;
-        }
-    }
-    int j = 0;
-    for (int k = 1; k < n; ++k)
-        if (M[(m - 1) * n + k] < M[(m - 1) * n + j]) j = k;
-    Seam s{ std::vector<int>(m), M[(m - 1) * n + j] };
-    for (int i = m - 1; i >= 0; --i) { s.cols[i] = j; j = back[i * n + j]; }
+    Seam s{ DP::FindVerticalSeam(c), 0 };
+    s.cost = DP::SeamEnergy(c, s.cols, true);
     return s;
 }
 
@@ -113,7 +94,7 @@ static void SingleSeamTiming(const cv::Mat& img)
     // AVERAGE per call is reported, so microsecond greedy times are stable.
     const std::vector<M> methods = {
         { "Greedy", GreedySeam, 100000, 0.05 },
-        { "DP (ref)", RefDP, 100000, 0.05 },
+        { "DP", TeamDP, 100000, 0.05 },
         { "GC Dinic", GCSeam, 600, 0.0 },
     };
     FILE* f = std::fopen((OUT + "single_seam_timing.csv").c_str(), "w");
@@ -150,7 +131,7 @@ static void FirstSeamCost(const std::vector<std::pair<std::string, cv::Mat>>& im
         for (DP::EnergyType e : { DP::EnergyType::Backward, DP::EnergyType::Forward })
         {
             const cv::Mat c = DP::ComputeEnergy(item.second, e);
-            const int64_t g = GreedySeam(c).cost, d = RefDP(c).cost, gc = GCSeam(c).cost;
+            const int64_t g = GreedySeam(c).cost, d = TeamDP(c).cost, gc = GCSeam(c).cost;
             const double ratio = d > 0 ? double(g) / d : 1.0;
             std::fprintf(f, "%s,%s,%lld,%lld,%lld,%.4f\n", item.first.c_str(), EnergyName(e),
                          (long long)g, (long long)d, (long long)gc, ratio);
@@ -174,7 +155,7 @@ struct CarveResult
     std::vector<std::vector<cv::Point>> seams;
 };
 
-// Generic carving loop for a SeamFinder (used for the reference DP).
+// Generic carving loop for a SeamFinder (used for the team DP).
 static CarveResult CarveWith(const cv::Mat& img, int k, const SeamFinder& finder)
 {
     const auto start = std::chrono::steady_clock::now();
@@ -260,7 +241,7 @@ static void FullResize(const std::string& name, const cv::Mat& img, int k, FILE*
     struct M { const char* name; std::function<CarveResult()> run; };
     const std::vector<M> methods = {
         { "Greedy", [&] { return CarveGreedy(img, k); } },
-        { "DP (ref)", [&] { return CarveWith(img, k, RefDP); } },
+        { "DP", [&] { return CarveWith(img, k, TeamDP); } },
         { "GC Dinic", [&] { return CarveGC(img, k); } },
     };
     std::vector<cv::Mat> results{ Label(img, "original") }, overlays;
