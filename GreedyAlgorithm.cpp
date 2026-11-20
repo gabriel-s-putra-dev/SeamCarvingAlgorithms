@@ -1,7 +1,7 @@
 /*!************************************************************************
 \file GreedyAlgorithm.cpp
-\author Asus
-\par DP email: ngylethan@gmail.com
+\author Ethan Ng Yong Le
+\par DP email: 2400557@sit.singaporetech.edu.sg
 \par Course: csd3131
 \par Algorithm Analysis
 \date 20-11-2026

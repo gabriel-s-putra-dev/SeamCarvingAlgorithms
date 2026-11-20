@@ -1,7 +1,7 @@
 /*!************************************************************************
 \file GreedyBenchmark.cpp
-\author Asus, xy236
-\par DP email: ngylethan@gmail.com, 63993933+xy236@users.noreply.github.com
+\author Ethan Ng Yong Le, Xiong Yang
+\par DP email: 2400557@sit.singaporetech.edu.sg, xiong.yang@digipen.edu
 \par Course: csd3131
 \par Algorithm Analysis
 \date 20-11-2026

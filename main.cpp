@@ -1,7 +1,7 @@
 /*!************************************************************************
 \file main.cpp
-\author Gabriel Sebastian Putra, Asus, XIONG YANG
-\par DP email: gabrielsebastian.p@digipen.edu, ngylethan@gmail.com, xiong.yang@digipen.edu
+\author Gabriel Sebastian Putra, Ethan Ng Yong Le, XIONG YANG
+\par DP email: gabrielsebastian.p@digipen.edu, 2400557@sit.singaporetech.edu.sg, xiong.yang@digipen.edu
 \par Course: csd3131
 \par Algorithm Analysis
 \date 20-11-2026
