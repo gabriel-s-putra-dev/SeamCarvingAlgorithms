@@ -18,7 +18,8 @@ O(mn) per seam for both methods.
 
 | File | Purpose |
 |---|---|
-| [`GreedyAlgorithm.h`](../../GreedyAlgorithm.h) / [`GreedyAlgorithm.cpp`](../../GreedyAlgorithm.cpp) | Greedy vertical/horizontal seam, seam removal, `Carve` loop, `DrawSeams` |
+| [`GreedyAlgorithm.h`](../../GreedyAlgorithm.h) / [`GreedyAlgorithm.cpp`](../../GreedyAlgorithm.cpp) | Greedy vertical/horizontal seam; `Greedy::Carve` (the shared loop with the greedy seam finder) |
+| [`SeamCarving.h`](../../SeamCarving.h) / [`SeamCarving.cpp`](../../SeamCarving.cpp) | Shared by DP, Greedy and Graph Cut: energy map, seam removal, remove-and-repeat loop, `CarveStats`, `DrawSeams` |
 | [`tests/GreedyTests.cpp`](../../tests/GreedyTests.cpp) | Correctness tests (14 816 checks) |
 | [`tests/GreedyBenchmark.cpp`](../../tests/GreedyBenchmark.cpp) | Timing, first-seam cost, full resize, side-by-side images → [`results/`](results) |
 | [`tests/GreedyAnalysis.cpp`](../../tests/GreedyAnalysis.cpp) | Random-map cost study, visual-quality metrics, zoom and forward-energy figures → [`results/`](results) |
@@ -89,7 +90,8 @@ cost ← Σ e[i][seam[i]]
   straight, then up, then down. `Carve` gets the same result by transposing the
   image and finding vertical seams, which the tests confirm.
 * **Fixed tie-breaking.** The results are deterministic and testable (§3.1).
-* **Same energy as DP and graph cut.** `DP::ComputeEnergy` provides backward
+* **Same energy as DP and graph cut.** The shared `ComputeEnergy`
+  (`SeamCarving.cpp`, also `Greedy::ComputeEnergy`) provides backward
   (Sobel `|Gx| + |Gy|`) or simplified forward (`|I[i][j+1] − I[i][j−1]|`)
   energy, so all three methods are compared on identical cost maps.
 
@@ -102,8 +104,12 @@ cost ← Σ e[i][seam[i]]
    transposed image.
 
 A parallel `coords` matrix holds each pixel's original (x, y) position and is
-carved together with the image. This is how `DrawSeams` can draw every removed
-seam on the *original* picture.
+carved together with the image (only when seams are recorded). This is how
+`DrawSeams` can draw every removed seam on the *original* picture.
+
+This loop is `SeamCarving::CarveWith` (`SeamCarving.cpp`), shared with DP and
+graph cut: `Greedy::Carve` only passes it the greedy seam finder, so the three
+methods differ in nothing but how each seam is chosen.
 
 ### 1.3 Why greedy is not optimal
 
@@ -203,7 +209,7 @@ run DP was faster (0.015 s against greedy's 0.019 s).
 | Tie-breaking and borders | Every rule in `GreedyAlgorithm.h`: leftmost start, straight > left > right, the image edges, 1×n / m×1 / 1×1 maps, invalid maps throw |
 | Greedy trap | The map below: greedy 400 vs optimal 5, and 100(m−1) vs m for m = 10, 50, 200 |
 | Random maps (2 000) | Valid seam (length, range, 8-connected), cost = Σ pixels, every step follows the greedy rule (an independent re-implementation), **G ≥ OPT**, horizontal(E) = vertical(Eᵀ) |
-| Yardstick | Reference DP = brute force over all seams (300 maps); n = 2 gives exactly 2^m seams (Question 2a(i)) |
+| Yardstick | The team DP (`TeamDPCost` in `tests/Check.h`) = brute force over all seams (300 maps); n = 2 gives exactly 2^m seams (Question 2a(i)) |
 | Seam removal | Hand-checked vertical and horizontal removal, colour pixels shift correctly, errors throw and leave the image unchanged |
 | Carve loop | Output size and type, 1-, 3- and 4-channel inputs, every original pixel removed at most once, `seamCosts` sum to `totalCost`, `Carve` = a hand-written find/remove loop (both energies), no-op and 1×1 targets, invalid sizes throw |
 | DrawSeams | Exactly the removed pixels are painted (red = vertical, green = horizontal) |

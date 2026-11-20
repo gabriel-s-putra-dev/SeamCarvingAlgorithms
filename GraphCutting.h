@@ -6,6 +6,9 @@
 // (Dinic or Edmonds-Karp, both implemented from scratch). OpenCV is only used
 // for image I/O, colour conversion and the Sobel filter.
 //
+// The energy map, seam removal, the carving loop and the seam overlay are
+// shared with DP and Greedy (SeamCarving.h); this file only finds seams.
+//
 // Graph for a VERTICAL seam on an m x n cost map c[i][j]
 //   nodes : one per pixel (i, j), j = 0..n-1, plus a VIRTUAL column j = n,
 //           plus source s and sink t                    -> V = m(n+1) + 2
@@ -29,6 +32,8 @@
 //   * cut capacity = sum_i c[i][b_i] = seam cost. By the max-flow min-cut
 //     theorem, max flow = min cut = optimal seam cost.
 // ============================================================================
+#include "SeamCarving.h"
+
 #include <opencv2/core.hpp>
 
 #include <cstdint>
@@ -37,7 +42,14 @@
 namespace GraphCut
 {
     enum class MaxFlowAlgorithm { Dinic, EdmondsKarp };
-    enum class EnergyType { Backward, Forward };
+
+    // Shared energy map, removal, stats and overlay (see SeamCarving.h).
+    using EnergyType = SeamCarving::EnergyType;
+    using SeamCarving::ComputeEnergy;
+    using SeamCarving::RemoveVerticalSeam;
+    using SeamCarving::RemoveHorizontalSeam;
+    using SeamCarving::CarveStats;
+    using SeamCarving::DrawSeams;
 
     // ------------------------------------------------------------------------
     // Residual graph in CSR (compressed sparse row) form.
@@ -81,13 +93,6 @@ namespace GraphCut
         int64_t nodes = 0, arcs = 0, augmentations = 0, phases = 0;
     };
 
-    // Energy / cost map, returned as CV_32S (exact integer capacities).
-    //   Backward: |Sobel_x| + |Sobel_y| on the grayscale image.
-    //   Forward : the brief's SIMPLIFIED per-pixel forward cost
-    //             |I[i][j+1] - I[i][j-1]| (not the transition-dependent version).
-    //             Meant for VERTICAL seams only; see the note at FindHorizontalSeam.
-    cv::Mat ComputeEnergy(const cv::Mat& img, EnergyType type = EnergyType::Backward);
-
     // Build the flow network for a vertical seam (exposed for tests / analysis).
     FlowNetwork BuildSeamGraph(const cv::Mat& cost, int64_t& s, int64_t& t);
 
@@ -101,32 +106,12 @@ namespace GraphCut
     SeamResult FindVerticalSeam(const cv::Mat& cost, MaxFlowAlgorithm algo = MaxFlowAlgorithm::Dinic);
     SeamResult FindHorizontalSeam(const cv::Mat& cost, MaxFlowAlgorithm algo = MaxFlowAlgorithm::Dinic);
 
-    // Remove one pixel per row (vertical) / per column (horizontal). Any Mat type.
-    // Throws std::invalid_argument if img is empty or too small (fewer than 2
-    // columns / rows), the seam has the wrong length, or an index is out of
-    // range. img is left unchanged when it throws.
-    void RemoveVerticalSeam(cv::Mat& img, const std::vector<int>& seam);
-    void RemoveHorizontalSeam(cv::Mat& img, const std::vector<int>& seam);
-
-    struct CarveStats
-    {
-        double seamSeconds = 0.0;        // time spent finding seams (energy + max-flow)
-        int64_t totalCost = 0;           // sum of all removed seam costs
-        std::vector<int64_t> seamCosts;  // cost of each removed seam, in order
-        // Original-image (x = col, y = row) coordinates of every removed seam,
-        // filled only when recordSeams is true. Used by DrawSeams.
-        std::vector<std::vector<cv::Point>> verticalSeams, horizontalSeams;
-    };
-
     // Shrink img to newWidth x newHeight: vertical seams first, then horizontal.
-    // The energy is recomputed after every removal.
+    // The energy is recomputed after every removal. Runs SeamCarving::CarveWith
+    // with the graph-cut FindVerticalSeam; see there for stats, recordSeams
+    // and errors.
     cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight,
                   MaxFlowAlgorithm algo = MaxFlowAlgorithm::Dinic,
                   EnergyType energy = EnergyType::Backward,
                   CarveStats* stats = nullptr, bool recordSeams = false);
-
-    // Original image with all removed seams drawn (red = vertical, green = horizontal).
-    // Throws std::invalid_argument if original is empty / not 8-bit, or a seam
-    // point lies outside it (stats from a different image).
-    cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats);
 }

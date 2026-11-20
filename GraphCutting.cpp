@@ -1,11 +1,7 @@
 #include "GraphCutting.h"
 
-#include <opencv2/imgproc.hpp>
-
 #include <algorithm>
-#include <chrono>
 #include <cstdlib>
-#include <cstring>
 #include <stdexcept>
 #include <string>
 
@@ -201,52 +197,7 @@ namespace GraphCut
         return csr + work;
     }
 
-    // ========================================================================
-    // Energy
-    // ========================================================================
-    static cv::Mat ToGray(const cv::Mat& img)
-    {
-        cv::Mat gray;
-        if (img.channels() == 3)      cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
-        else if (img.channels() == 4) cv::cvtColor(img, gray, cv::COLOR_BGRA2GRAY);
-        else                          gray = img;
-        return gray;
-    }
-
-    cv::Mat ComputeEnergy(const cv::Mat& img, EnergyType type)
-    {
-        cv::Mat gray = ToGray(img);
-        cv::Mat energy;
-        if (type == EnergyType::Backward)
-        {
-            cv::Mat g, gx, gy;
-            gray.convertTo(g, CV_64F);
-            cv::Sobel(g, gx, CV_64F, 1, 0, 3, 1.0, 0.0, cv::BORDER_REFLECT);
-            cv::Sobel(g, gy, CV_64F, 0, 1, 3, 1.0, 0.0, cv::BORDER_REFLECT);
-            cv::Mat mag = cv::abs(gx) + cv::abs(gy);
-            mag.convertTo(energy, CV_32S);
-        }
-        else
-        {
-            // c[i][j] = |I[i][j+1] - I[i][j-1]|, border pixels replicated.
-            cv::Mat g;
-            gray.convertTo(g, CV_32S);
-            energy.create(g.size(), CV_32S);
-            const int cols = g.cols;
-            for (int i = 0; i < g.rows; ++i)
-            {
-                const int* row = g.ptr<int>(i);
-                int* out = energy.ptr<int>(i);
-                for (int j = 0; j < cols; ++j)
-                {
-                    const int left = row[std::max(j - 1, 0)];
-                    const int right = row[std::min(j + 1, cols - 1)];
-                    out[j] = std::abs(right - left);
-                }
-            }
-        }
-        return energy;
-    }
+    // The energy map is SeamCarving::ComputeEnergy (shared with DP and Greedy).
 
     // ========================================================================
     // Seam finding
@@ -338,135 +289,13 @@ namespace GraphCut
     }
 
     // ========================================================================
-    // Seam removal and carving loop
+    // Carving: the shared remove-and-repeat loop with the graph-cut seam finder
     // ========================================================================
-    // Validates a removal before anything is changed, so a bad seam throws
-    // std::invalid_argument (same behaviour as DP and Greedy) and img is left
-    // untouched. length = pixels along the seam, limit = valid index range.
-    static void CheckRemoval(const cv::Mat& img, const std::vector<int>& seam,
-                             int length, int limit, const char* who)
-    {
-        if (img.empty())
-            throw std::invalid_argument(std::string(who) + ": image is empty");
-        if (limit < 2)
-            throw std::invalid_argument(std::string(who) + ": image is too small to remove a seam");
-        if (static_cast<int>(seam.size()) != length)
-            throw std::invalid_argument(std::string(who) + ": seam has the wrong length");
-        for (int v : seam)
-            if (v < 0 || v >= limit)
-                throw std::invalid_argument(std::string(who) + ": seam index out of range");
-    }
-
-    void RemoveVerticalSeam(cv::Mat& img, const std::vector<int>& seam)
-    {
-        CheckRemoval(img, seam, img.rows, img.cols, "GraphCut::RemoveVerticalSeam");
-        cv::Mat out(img.rows, img.cols - 1, img.type());
-        const size_t es = img.elemSize();
-        for (int i = 0; i < img.rows; ++i)
-        {
-            const int c = seam[i];
-            const uchar* src = img.ptr(i);
-            uchar* dst = out.ptr(i);
-            std::memcpy(dst, src, c * es);                                   // left of seam
-            std::memcpy(dst + c * es, src + (c + 1) * es, (img.cols - 1 - c) * es);  // right of seam
-        }
-        img = out;
-    }
-
-    void RemoveHorizontalSeam(cv::Mat& img, const std::vector<int>& seam)
-    {
-        CheckRemoval(img, seam, img.cols, img.rows, "GraphCut::RemoveHorizontalSeam");
-        cv::Mat t;
-        cv::transpose(img, t);
-        RemoveVerticalSeam(t, seam);
-        cv::transpose(t, img);
-    }
-
-    // Removes k vertical seams from (img, coords). coords holds the original
-    // (x, y) of every pixel so removed seams can be drawn on the input image.
-    static void RemoveSeams(cv::Mat& img, cv::Mat& coords, int k, MaxFlowAlgorithm algo,
-                            EnergyType energy, CarveStats* stats,
-                            std::vector<std::vector<cv::Point>>* record)
-    {
-        for (int step = 0; step < k; ++step)
-        {
-            const auto t0 = std::chrono::steady_clock::now();
-            const SeamResult r = FindVerticalSeam(ComputeEnergy(img, energy), algo);
-            const auto t1 = std::chrono::steady_clock::now();
-            if (stats)
-            {
-                stats->seamSeconds += std::chrono::duration<double>(t1 - t0).count();
-                stats->totalCost += r.cost;
-                stats->seamCosts.push_back(r.cost);
-            }
-            if (record)
-            {
-                std::vector<cv::Point> pts(img.rows);
-                for (int i = 0; i < img.rows; ++i)
-                {
-                    const cv::Vec2i p = coords.at<cv::Vec2i>(i, r.seam[i]);
-                    pts[i] = cv::Point(p[0], p[1]);
-                }
-                record->push_back(std::move(pts));
-            }
-            RemoveVerticalSeam(img, r.seam);
-            RemoveVerticalSeam(coords, r.seam);
-        }
-    }
-
     cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight, MaxFlowAlgorithm algo,
                   EnergyType energy, CarveStats* stats, bool recordSeams)
     {
-        if (img.empty() || newWidth < 1 || newHeight < 1 || newWidth > img.cols || newHeight > img.rows)
-            throw std::invalid_argument("Carve: target size must be between 1 and the original size");
-
-        cv::Mat out = img.clone();
-        cv::Mat coords(img.rows, img.cols, CV_32SC2);
-        for (int y = 0; y < img.rows; ++y)
-            for (int x = 0; x < img.cols; ++x)
-                coords.at<cv::Vec2i>(y, x) = cv::Vec2i(x, y);
-
-        const bool rec = recordSeams && stats;
-        // Vertical seams reduce the width.
-        RemoveSeams(out, coords, img.cols - newWidth, algo, energy, stats,
-                    rec ? &stats->verticalSeams : nullptr);
-        // Horizontal seams: transpose, remove vertical seams, transpose back.
-        if (newHeight < img.rows)
-        {
-            cv::Mat outT, coordsT;
-            cv::transpose(out, outT);
-            cv::transpose(coords, coordsT);
-            RemoveSeams(outT, coordsT, img.rows - newHeight, algo, energy, stats,
-                        rec ? &stats->horizontalSeams : nullptr);
-            cv::transpose(outT, out);
-        }
-        return out;
-    }
-
-    cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats)
-    {
-        if (original.empty() || original.depth() != CV_8U)
-            throw std::invalid_argument("GraphCut::DrawSeams: original must be a non-empty 8-bit image");
-
-        cv::Mat vis;
-        if (original.channels() == 1)      cv::cvtColor(original, vis, cv::COLOR_GRAY2BGR);
-        else if (original.channels() == 4) cv::cvtColor(original, vis, cv::COLOR_BGRA2BGR);
-        else                               vis = original.clone();
-
-        const cv::Rect bounds(0, 0, vis.cols, vis.rows);
-        auto draw = [&](const std::vector<std::vector<cv::Point>>& seams, const cv::Vec3b& colour)
-        {
-            for (const auto& seam : seams)
-                for (const cv::Point& p : seam)
-                {
-                    if (!bounds.contains(p))
-                        throw std::invalid_argument("GraphCut::DrawSeams: seam point outside the image "
-                                                    "(stats from a different image?)");
-                    vis.at<cv::Vec3b>(p) = colour;
-                }
-        };
-        draw(stats.verticalSeams, cv::Vec3b(0, 0, 255));     // red   (BGR)
-        draw(stats.horizontalSeams, cv::Vec3b(0, 255, 0));   // green
-        return vis;
+        return SeamCarving::CarveWith(img, newWidth, newHeight, energy,
+                                      [algo](const cv::Mat& e) { return FindVerticalSeam(e, algo).seam; },
+                                      stats, recordSeams, "GraphCut::Carve");
     }
 }

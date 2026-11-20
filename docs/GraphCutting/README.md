@@ -11,9 +11,10 @@ one machine (§2.0). Each table can be regenerated from the CSV files in
 
 | File | Purpose |
 |---|---|
-| [`GraphCutting.h`](../../GraphCutting.h) / [`GraphCutting.cpp`](../../GraphCutting.cpp) | Flow network, Dinic, Edmonds–Karp, seam graph, vertical/horizontal seams, carve loop, seam overlay, energy |
+| [`GraphCutting.h`](../../GraphCutting.h) / [`GraphCutting.cpp`](../../GraphCutting.cpp) | Flow network, Dinic, Edmonds–Karp, seam graph, vertical/horizontal seams; `GraphCut::Carve` (the shared loop with the graph-cut seam finder) |
+| [`SeamCarving.h`](../../SeamCarving.h) / [`SeamCarving.cpp`](../../SeamCarving.cpp) | Shared by DP, Greedy and Graph Cut: energy map, seam removal, remove-and-repeat loop, `CarveStats`, seam overlay (re-exported as `GraphCut::ComputeEnergy`, `GraphCut::DrawSeams`, …) |
 | [`tests/GraphCuttingTests.cpp`](../../tests/GraphCuttingTests.cpp) | Correctness tests (2 073 checks) |
-| [`tests/GraphCutVsTeamDPTests.cpp`](../../tests/GraphCutVsTeamDPTests.cpp) | Cross-check against the team's `DynamicProgramming.cpp` (6 474 checks) |
+| [`tests/GraphCutVsTeamDPTests.cpp`](../../tests/GraphCutVsTeamDPTests.cpp) | Cross-check against the team's `DynamicProgramming.cpp` (6 430 checks) |
 | [`tests/GraphCuttingBenchmark.cpp`](../../tests/GraphCuttingBenchmark.cpp) | Timing, Dinic phase, counted-memory, full-resize and visual-comparison experiments → [`results/`](results) |
 | [`tests/GraphCuttingMemory.cpp`](../../tests/GraphCuttingMemory.cpp) + [`tools/run_graphcut_memory.py`](../../tools/run_graphcut_memory.py) | Measured peak-memory experiment (§2.3) |
 | [`tools/plot_graphcut_timing.py`](../../tools/plot_graphcut_timing.py) | Draws the timing chart from the benchmark CSV |
@@ -29,7 +30,7 @@ configure (needs git; the first run builds OpenCV once, later runs are cached).
 cmake --preset vs2022
 cmake --build --preset vs2022-release --target gc_tests gc_vs_dp gc_bench gc_mem
 out\build\vs2022\Release\gc_tests.exe     # 2073 checks passed, 0 failed
-out\build\vs2022\Release\gc_vs_dp.exe     # 6474 checks passed, 0 failed
+out\build\vs2022\Release\gc_vs_dp.exe     # 6430 checks passed, 0 failed
 out\build\vs2022\Release\gc_bench.exe     # writes docs/GraphCutting/results/ (~3 min)
 
 # Linux / macOS
@@ -430,7 +431,7 @@ What the measurements show:
 |---|---|---|
 | 300 random cost maps per solver (1–11 × 1–11), Dinic and EK | `gc_tests` | GC cost = DP cost in every case |
 | 200 random flow networks | `gc_tests` | Dinic = Edmonds–Karp |
-| Team DP: energy maps, 22 images | `gc_vs_dp` | identical to `GraphCut::ComputeEnergy`, backward and simplified forward |
+| Team DP: energy maps | `dp_tests` | one shared `ComputeEnergy` (`SeamCarving.cpp`) for every method, so identical by construction |
 | Team DP: 400 random cost maps (1–14 × 1–14), Dinic and EK, vertical and horizontal | `gc_vs_dp` | GC cost = DP cost and GC seam = DP seam in every case; every GC seam accepted by `DP::SeamEnergy` |
 | Team DP: `GraphCut::Carve` vs `DP::Carve` (5 runs, both energies, up to 274×186) | `gc_vs_dp` | equal seam cost at every step, identical seams, pixel-identical output |
 | First seam, tower | `seam_cost.csv` | DP 2 446 · **GC 2 446** · Greedy 7 494 |

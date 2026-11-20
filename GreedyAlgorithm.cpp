@@ -1,12 +1,7 @@
 #include "GreedyAlgorithm.h"
 
-#include <opencv2/imgproc.hpp>
-
-#include <chrono>
-#include <cstring>
 #include <stdexcept>
 #include <string>
-#include <utility>
 
 namespace Greedy
 {
@@ -89,135 +84,15 @@ namespace Greedy
     }
 
     // ========================================================================
-    // Seam removal
+    // Carving: the shared remove-and-repeat loop with the greedy seam finder
     // ========================================================================
-    void RemoveVerticalSeam(cv::Mat& img, const std::vector<int>& seam)
-    {
-        if (img.cols < 2)
-            throw std::invalid_argument("Greedy::RemoveVerticalSeam: image must be at least 2 columns wide");
-        if (static_cast<int>(seam.size()) != img.rows)
-            throw std::invalid_argument("Greedy::RemoveVerticalSeam: seam length must equal the number of rows");
-
-        cv::Mat out(img.rows, img.cols - 1, img.type());
-        const size_t es = img.elemSize();
-        for (int i = 0; i < img.rows; ++i)
-        {
-            const int c = seam[i];
-            if (c < 0 || c >= img.cols)
-                throw std::invalid_argument("Greedy::RemoveVerticalSeam: seam column out of range");
-            const uchar* src = img.ptr(i);
-            uchar* dst = out.ptr(i);
-            std::memcpy(dst, src, c * es);                                            // left of seam
-            std::memcpy(dst + c * es, src + (c + 1) * es, (img.cols - 1 - c) * es);   // right of seam
-        }
-        img = out;
-    }
-
-    void RemoveHorizontalSeam(cv::Mat& img, const std::vector<int>& seam)
-    {
-        if (img.rows < 2)
-            throw std::invalid_argument("Greedy::RemoveHorizontalSeam: image must be at least 2 rows tall");
-        if (static_cast<int>(seam.size()) != img.cols)
-            throw std::invalid_argument("Greedy::RemoveHorizontalSeam: seam length must equal the number of columns");
-        cv::Mat t;
-        cv::transpose(img, t);
-        RemoveVerticalSeam(t, seam);   // seam[col] = row becomes seam[row'] = col'
-        cv::transpose(t, img);
-    }
-
-    // ========================================================================
-    // Carving loop
-    // ========================================================================
-    // Removes k vertical seams from (img, coords). coords holds the original
-    // (x, y) of every pixel so removed seams can be drawn on the input image.
-    static void RemoveSeams(cv::Mat& img, cv::Mat& coords, int k, EnergyType energy,
-                            CarveStats* stats, std::vector<std::vector<cv::Point>>* record)
-    {
-        for (int step = 0; step < k; ++step)
-        {
-            const auto t0 = std::chrono::steady_clock::now();
-            const SeamResult r = FindVerticalSeam(DP::ComputeEnergy(img, energy));
-            const auto t1 = std::chrono::steady_clock::now();
-            if (stats)
-            {
-                stats->seamSeconds += std::chrono::duration<double>(t1 - t0).count();
-                stats->totalCost += r.cost;
-                stats->seamCosts.push_back(r.cost);
-            }
-            if (record)
-            {
-                std::vector<cv::Point> pts(img.rows);
-                for (int i = 0; i < img.rows; ++i)
-                {
-                    const cv::Vec2i p = coords.at<cv::Vec2i>(i, r.seam[i]);
-                    pts[i] = cv::Point(p[0], p[1]);
-                }
-                record->push_back(std::move(pts));
-            }
-            RemoveVerticalSeam(img, r.seam);
-            RemoveVerticalSeam(coords, r.seam);
-        }
-    }
-
     cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight, EnergyType energy,
                   CarveStats* stats, bool recordSeams)
     {
-        if (img.empty() || newWidth < 1 || newHeight < 1 || newWidth > img.cols || newHeight > img.rows)
-            throw std::invalid_argument("Greedy::Carve: target size must be between 1 and the original size");
-
-        const auto start = std::chrono::steady_clock::now();
-        cv::Mat out = img.clone();
-        cv::Mat coords(img.rows, img.cols, CV_32SC2);
-        for (int y = 0; y < img.rows; ++y)
-            for (int x = 0; x < img.cols; ++x)
-                coords.at<cv::Vec2i>(y, x) = cv::Vec2i(x, y);
-
-        const bool rec = recordSeams && stats;
-        // Vertical seams reduce the width.
-        RemoveSeams(out, coords, img.cols - newWidth, energy, stats,
-                    rec ? &stats->verticalSeams : nullptr);
-        // Horizontal seams: transpose, remove vertical seams, transpose back.
         // On the transposed image a greedy vertical seam is exactly a greedy
         // horizontal seam of the original (same tie-breaking: up before down).
-        if (newHeight < img.rows)
-        {
-            cv::Mat outT, coordsT;
-            cv::transpose(out, outT);
-            cv::transpose(coords, coordsT);
-            RemoveSeams(outT, coordsT, img.rows - newHeight, energy, stats,
-                        rec ? &stats->horizontalSeams : nullptr);
-            cv::transpose(outT, out);
-        }
-        if (stats)
-            stats->totalSeconds +=
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        return out;
-    }
-
-    cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats)
-    {
-        if (original.empty() || original.depth() != CV_8U)
-            throw std::invalid_argument("Greedy::DrawSeams: original must be a non-empty 8-bit image");
-
-        cv::Mat vis;
-        if (original.channels() == 1)      cv::cvtColor(original, vis, cv::COLOR_GRAY2BGR);
-        else if (original.channels() == 4) cv::cvtColor(original, vis, cv::COLOR_BGRA2BGR);
-        else                               vis = original.clone();
-
-        const cv::Rect bounds(0, 0, vis.cols, vis.rows);
-        auto draw = [&](const std::vector<std::vector<cv::Point>>& seams, const cv::Vec3b& colour)
-        {
-            for (const auto& seam : seams)
-                for (const cv::Point& p : seam)
-                {
-                    if (!bounds.contains(p))
-                        throw std::invalid_argument("Greedy::DrawSeams: seam point outside the image "
-                                                    "(stats from a different image?)");
-                    vis.at<cv::Vec3b>(p) = colour;
-                }
-        };
-        draw(stats.verticalSeams, cv::Vec3b(0, 0, 255));     // red   (BGR)
-        draw(stats.horizontalSeams, cv::Vec3b(0, 255, 0));   // green
-        return vis;
+        return SeamCarving::CarveWith(img, newWidth, newHeight, energy,
+                                      [](const cv::Mat& e) { return FindVerticalSeam(e).seam; },
+                                      stats, recordSeams, "Greedy::Carve");
     }
 }

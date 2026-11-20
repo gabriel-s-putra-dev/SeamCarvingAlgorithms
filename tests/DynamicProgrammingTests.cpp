@@ -1,30 +1,23 @@
-// Correctness tests for DynamicProgramming.cpp — step (a) energy map.
-// Self-contained (no test framework). Build from the repo root:
-//   g++ -std=c++14 -O2 -I. tests/DynamicProgrammingTests.cpp DynamicProgramming.cpp GraphCutting.cpp -o dp_tests `pkg-config --cflags --libs opencv4`
-//   ./dp_tests            (run from the repo root so images/ is found)
-//
-// GraphCutting.cpp is linked only to check that DP::ComputeEnergy produces
-// exactly the same cost map as GraphCut::ComputeEnergy, so all methods are
-// compared on identical energies.
+// Correctness tests for step (a): the energy map, SeamCarving::ComputeEnergy
+// (shared by DP, Greedy and Graph Cut; called here through the DP module).
+// Build and run from the repo root:
+//   cmake --build --preset vs2022-release --target dp_tests
+//   out\build\vs2022\Release\dp_tests.exe     (or: ctest --preset vs2022-release)
+// or with g++:
+//   g++ -std=c++14 -O2 -I. tests/DynamicProgrammingTests.cpp SeamCarving.cpp DynamicProgramming.cpp GraphCutting.cpp GreedyAlgorithm.cpp -o dp_tests `pkg-config --cflags --libs opencv4`
+#include "Check.h"
 #include "DynamicProgramming.h"
 #include "GraphCutting.h"
+#include "GreedyAlgorithm.h"
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include <cstdio>
-#include <functional>
 #include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-static int g_failed = 0, g_passed = 0;
-#define CHECK(cond)                                                                 \
-    do {                                                                            \
-        if (cond) ++g_passed;                                                       \
-        else { ++g_failed; std::printf("  FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } \
-    } while (0)
 
 static const DP::EnergyType TYPES[] = { DP::EnergyType::Backward, DP::EnergyType::Forward };
 
@@ -151,34 +144,34 @@ static void TestEmptyThrows()
     }
 }
 
-// DP and Graph Cut must see exactly the same cost map.
-static void TestMatchesGraphCutEnergy()
+// DP, Greedy and Graph Cut must see exactly the same cost map. They used to
+// have separate copies (compared pixel for pixel here); now all three modules
+// re-export the one shared function, so check that it really is the same one.
+static void TestSharedEnergyFunction()
 {
-    std::mt19937 rng(42);
-    for (int k = 0; k < 50; ++k)
-    {
-        cv::Mat img;
-        cv::cvtColor(RandomGray(1 + k % 13, 1 + (k * 7) % 17, rng), img, cv::COLOR_GRAY2BGR);
-        CHECK(SameMat(DP::ComputeEnergy(img, DP::EnergyType::Backward),
-                      GraphCut::ComputeEnergy(img, GraphCut::EnergyType::Backward)));
-        CHECK(SameMat(DP::ComputeEnergy(img, DP::EnergyType::Forward),
-                      GraphCut::ComputeEnergy(img, GraphCut::EnergyType::Forward)));
-    }
+    using Fn = cv::Mat (*)(const cv::Mat&, SeamCarving::EnergyType);
+    const Fn shared = &SeamCarving::ComputeEnergy;
+    CHECK(static_cast<Fn>(&DP::ComputeEnergy) == shared);
+    CHECK(static_cast<Fn>(&GraphCut::ComputeEnergy) == shared);
+    CHECK(static_cast<Fn>(&Greedy::ComputeEnergy) == shared);
+
+    // And it works on the two sample images.
     for (const char* path : { "images/tower.png", "images/synthetic.png" })
     {
         const cv::Mat img = cv::imread(path, cv::IMREAD_COLOR);
         CHECK(!img.empty());
         if (img.empty()) { std::printf("  (could not read %s; run from the repo root)\n", path); continue; }
-        CHECK(SameMat(DP::ComputeEnergy(img, DP::EnergyType::Backward),
-                      GraphCut::ComputeEnergy(img, GraphCut::EnergyType::Backward)));
-        CHECK(SameMat(DP::ComputeEnergy(img, DP::EnergyType::Forward),
-                      GraphCut::ComputeEnergy(img, GraphCut::EnergyType::Forward)));
+        for (DP::EnergyType t : TYPES)
+        {
+            const cv::Mat e = DP::ComputeEnergy(img, t);
+            CHECK(e.type() == CV_32SC1 && e.size() == img.size());
+        }
     }
 }
 
 int main()
 {
-    const std::vector<std::pair<const char*, std::function<void()>>> tests = {
+    return RunTests({
         { "type, size, non-negative", TestTypeSizeNonNegative },
         { "constant image -> zero energy", TestConstantImageIsZero },
         { "vertical step edge", TestVerticalStepEdge },
@@ -186,15 +179,6 @@ int main()
         { "forward energy hand values", TestForwardHandValues },
         { "1/3/4-channel inputs", TestChannelCounts },
         { "empty image throws", TestEmptyThrows },
-        { "matches GraphCut::ComputeEnergy", TestMatchesGraphCutEnergy },
-    };
-    for (const auto& test : tests)
-    {
-        const int before = g_failed;
-        std::printf("[%s]\n", test.first);
-        test.second();
-        if (g_failed == before) std::printf("  ok\n");
-    }
-    std::printf("\n%d checks passed, %d failed\n", g_passed, g_failed);
-    return g_failed == 0 ? 0 : 1;
+        { "one shared energy function", TestSharedEnergyFunction },
+    });
 }

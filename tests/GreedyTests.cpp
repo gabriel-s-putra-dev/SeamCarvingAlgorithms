@@ -1,5 +1,5 @@
 // Correctness tests for GreedyAlgorithm.cpp (Person B: check and explain).
-// Self-contained (no test framework). Build from the repo root:
+// No test framework (shared helpers in tests/Check.h). Build from the repo root:
 //   Windows:       cmake --preset vs2022
 //                  cmake --build --preset vs2022-release --target greedy_tests
 //                  out\build\vs2022\Release\greedy_tests.exe
@@ -23,9 +23,10 @@
 //      removed at most once, stats add up, Carve == manual find/remove loop.
 //   8. DrawSeams colours exactly the removed pixels.
 //   9. The tower image: greedy >= optimal at every one of 80 carving steps.
-// RefDP below is a small reference used only as the "optimal" yardstick (the
-// same recurrence as the team's DP; GraphCuttingTests.cpp checks that graph
-// cut gives the same optimum).
+// The "optimal" yardstick is the team's DP (TeamDPCost in tests/Check.h);
+// GraphCuttingTests.cpp checks that graph cut gives the same optimum.
+#include "Check.h"
+#include "DynamicProgramming.h"
 #include "GreedyAlgorithm.h"
 
 #include <opencv2/imgcodecs.hpp>
@@ -35,7 +36,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <functional>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -43,58 +43,15 @@
 
 using namespace Greedy;
 
-static int g_failed = 0, g_passed = 0;
-#define CHECK(cond)                                                                 \
-    do {                                                                            \
-        if (cond) ++g_passed;                                                       \
-        else { ++g_failed; std::printf("  FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } \
-    } while (0)
-
-// Runs f and reports whether it threw std::invalid_argument.
-static bool Throws(const std::function<void()>& f)
-{
-    try { f(); }
-    catch (const std::invalid_argument&) { return true; }
-    return false;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-static cv::Mat FromRows(const std::vector<std::vector<int>>& rows)
-{
-    cv::Mat c(static_cast<int>(rows.size()), static_cast<int>(rows[0].size()), CV_32S);
-    for (int i = 0; i < c.rows; ++i)
-        for (int j = 0; j < c.cols; ++j) c.at<int>(i, j) = rows[i][j];
-    return c;
-}
-
 static cv::Mat RandomMap(std::mt19937& rng, int m, int n, int maxValue)
 {
     cv::Mat c(m, n, CV_32S);
     for (int i = 0; i < m; ++i)
         for (int j = 0; j < n; ++j) c.at<int>(i, j) = static_cast<int>(rng() % maxValue);
     return c;
-}
-
-// Reference DP: M[i][j] = c[i][j] + min(M[i-1][j-1..j+1]); returns the minimum seam cost.
-static int64_t RefDPCost(const cv::Mat& c)
-{
-    const int m = c.rows, n = c.cols;
-    std::vector<int64_t> prev(n), cur(n);
-    for (int j = 0; j < n; ++j) prev[j] = c.at<int>(0, j);
-    for (int i = 1; i < m; ++i)
-    {
-        for (int j = 0; j < n; ++j)
-        {
-            int64_t best = prev[j];
-            if (j > 0) best = std::min(best, prev[j - 1]);
-            if (j + 1 < n) best = std::min(best, prev[j + 1]);
-            cur[j] = c.at<int>(i, j) + best;
-        }
-        std::swap(prev, cur);
-    }
-    return *std::min_element(prev.begin(), prev.end());
 }
 
 // Brute force: enumerate EVERY connected vertical seam. Returns the minimum
@@ -182,9 +139,9 @@ static void TestHandCheckedMaps()
     const SeamResult v = FindVerticalSeam(c);
     CHECK((v.seam == std::vector<int>{ 1, 2, 3, 2 }));
     CHECK(v.cost == 9);
-    CHECK(RefDPCost(c) == 7);
+    CHECK(TeamDPCost(c) == 7);
     CHECK(BruteForceMin(c) == 7);
-    CHECK(v.cost > RefDPCost(c));   // greedy is NOT optimal here
+    CHECK(v.cost > TeamDPCost(c));   // greedy is NOT optimal here
 
     // The same map transposed: the horizontal seam must be the same path.
     const SeamResult h = FindHorizontalSeam(c.t());
@@ -275,10 +232,10 @@ static void TestGreedyTrap()
     const SeamResult r = FindVerticalSeam(c);
     CHECK((r.seam == std::vector<int>{ 4, 4, 4, 4, 4 }));
     CHECK(r.cost == 400);
-    CHECK(RefDPCost(c) == 5);
+    CHECK(TeamDPCost(c) == 5);
     CHECK(BruteForceMin(c) == 5);
     std::printf("  trap: greedy %lld vs optimal %lld (%.0fx)\n", (long long)r.cost,
-                (long long)RefDPCost(c), double(r.cost) / RefDPCost(c));
+                (long long)TeamDPCost(c), double(r.cost) / TeamDPCost(c));
 
     // The trap gets worse with height: greedy grows by 100 per row, DP by 1.
     for (int m : { 10, 50, 200 })
@@ -287,12 +244,12 @@ static void TestGreedyTrap()
         t.at<int>(0, 4) = 0;
         t(cv::Rect(3, 1, 2, m - 1)).setTo(100);
         CHECK(FindVerticalSeam(t).cost == 100LL * (m - 1));
-        CHECK(RefDPCost(t) == m);
+        CHECK(TeamDPCost(t) == m);
     }
 
     // The same trap, horizontally (transpose).
     const SeamResult rh = FindHorizontalSeam(c.t());
-    CHECK(rh.cost == 400 && RefDPCost(c) == 5);
+    CHECK(rh.cost == 400 && TeamDPCost(c) == 5);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +265,7 @@ static void TestRandomMaps()
         const cv::Mat c = RandomMap(rng, m, n, 1 + rng() % 100);
         const SeamResult v = FindVerticalSeam(c);
         const SeamResult h = FindHorizontalSeam(c);
-        const int64_t best = RefDPCost(c);
+        const int64_t best = TeamDPCost(c);
 
         CHECK(ValidSeam(v.seam, m, n));
         CHECK(v.cost == SumAlong(c, v.seam));
@@ -319,7 +276,7 @@ static void TestRandomMaps()
         const SeamResult vt = FindVerticalSeam(c.t());
         CHECK(h.seam == vt.seam && h.cost == vt.cost);
         CHECK(ValidSeam(h.seam, n, m));
-        CHECK(h.cost >= RefDPCost(cv::Mat(c.t())));
+        CHECK(h.cost >= TeamDPCost(cv::Mat(c.t())));
 
         optimal += (v.cost == best);
         ++total;
@@ -331,7 +288,7 @@ static void TestRandomMaps()
     {
         const int m = 1 + rng() % 6, n = 1 + rng() % 6;
         const cv::Mat c = RandomMap(rng, m, n, 20);
-        CHECK(RefDPCost(c) == BruteForceMin(c));
+        CHECK(TeamDPCost(c) == BruteForceMin(c));
         CHECK(FindVerticalSeam(c).cost >= BruteForceMin(c));
     }
 
@@ -537,10 +494,10 @@ static void TestTowerImage()
     const cv::Mat c = DP::ComputeEnergy(img);
     const SeamResult first = FindVerticalSeam(c);
     CHECK(ValidSeam(first.seam, c.rows, c.cols));
-    CHECK(RefDPCost(c) == 2446);   // same optimum as GraphCuttingTests.cpp
+    CHECK(TeamDPCost(c) == 2446);   // same optimum as GraphCuttingTests.cpp
     CHECK(first.cost >= 2446);
     std::printf("  tower first seam: greedy %lld, optimal %lld (%.2fx)\n",
-                (long long)first.cost, (long long)RefDPCost(c), double(first.cost) / RefDPCost(c));
+                (long long)first.cost, (long long)TeamDPCost(c), double(first.cost) / TeamDPCost(c));
 
     // Carve 80 seams greedily; at every step the greedy seam on the CURRENT
     // image must be valid and cost at least the optimum on that same image.
@@ -550,7 +507,7 @@ static void TestTowerImage()
     {
         const cv::Mat e = DP::ComputeEnergy(cur);
         const SeamResult g = FindVerticalSeam(e);
-        const int64_t best = RefDPCost(e);
+        const int64_t best = TeamDPCost(e);
         CHECK(ValidSeam(g.seam, e.rows, e.cols));
         atLeastOptimal += (g.cost >= best);
         equalToOptimal += (g.cost == best);
@@ -564,7 +521,7 @@ static void TestTowerImage()
 // ---------------------------------------------------------------------------
 int main()
 {
-    const std::vector<std::pair<const char*, std::function<void()>>> tests = {
+    return RunTests({
         { "hand-checked maps", TestHandCheckedMaps },
         { "tie-breaking and borders", TestTieBreakingAndBorders },
         { "greedy trap", TestGreedyTrap },
@@ -572,14 +529,5 @@ int main()
         { "seam removal", TestRemoval },
         { "carve loop and DrawSeams", TestCarve },
         { "tower image vs optimal", TestTowerImage },
-    };
-    for (const auto& test : tests)
-    {
-        const int before = g_failed;
-        std::printf("[%s]\n", test.first);
-        test.second();
-        if (g_failed == before) std::printf("  ok\n");
-    }
-    std::printf("\n%d checks passed, %d failed\n", g_passed, g_failed);
-    return g_failed == 0 ? 0 : 1;
+    });
 }

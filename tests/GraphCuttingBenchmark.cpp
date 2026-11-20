@@ -1,6 +1,6 @@
 // Benchmark + visual comparison for GraphCutting.cpp. Build from the repo root
 // (CMake target gc_bench), or:
-//   g++ -std=c++14 -O2 -I. tests/GraphCuttingBenchmark.cpp GraphCutting.cpp DynamicProgramming.cpp GreedyAlgorithm.cpp -o gc_bench `pkg-config --cflags --libs opencv4`
+//   g++ -std=c++14 -O2 -I. tests/GraphCuttingBenchmark.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp GreedyAlgorithm.cpp -o gc_bench `pkg-config --cflags --libs opencv4`
 //   ./gc_bench            (writes docs/GraphCutting/results/)
 // Then draw the timing chart:  python tools/plot_graphcut_timing.py
 //
@@ -169,31 +169,23 @@ static void MemoryUsage(const cv::Mat& img)
 // ---------------------------------------------------------------------------
 // Full resize: remove k vertical seams with each method on the same image.
 // ---------------------------------------------------------------------------
-struct CarveResult { cv::Mat out; double seconds; int64_t totalCost; std::vector<std::vector<cv::Point>> seams; };
+// Each module's Carve runs the same shared loop (SeamCarving::CarveWith), so
+// only the seam finder differs between the methods.
+using CarveFn = std::function<cv::Mat(const cv::Mat& img, int k, CarveStats* st)>;
 
-static CarveResult CarveWith(const cv::Mat& img, int k, const SeamFinder& finder)
+static cv::Mat CarveDP(const cv::Mat& img, int k, CarveStats* st)
 {
-    CarveResult r{ img.clone(), 0.0, 0, {} };
-    cv::Mat coords(img.rows, img.cols, CV_32SC2);
-    for (int y = 0; y < img.rows; ++y)
-        for (int x = 0; x < img.cols; ++x) coords.at<cv::Vec2i>(y, x) = cv::Vec2i(x, y);
-    for (int step = 0; step < k; ++step)
-    {
-        const auto t0 = std::chrono::steady_clock::now();
-        const Seam s = finder(ComputeEnergy(r.out));
-        r.seconds += Seconds(t0);
-        r.totalCost += s.cost;
-        std::vector<cv::Point> pts(r.out.rows);
-        for (int i = 0; i < r.out.rows; ++i)
-        {
-            const cv::Vec2i p = coords.at<cv::Vec2i>(i, s.cols[i]);
-            pts[i] = cv::Point(p[0], p[1]);
-        }
-        r.seams.push_back(pts);
-        RemoveVerticalSeam(r.out, s.cols);
-        RemoveVerticalSeam(coords, s.cols);
-    }
-    return r;
+    return DP::Carve(img, img.cols - k, img.rows, EnergyType::Backward, st, true);
+}
+
+static cv::Mat CarveGreedy(const cv::Mat& img, int k, CarveStats* st)
+{
+    return Greedy::Carve(img, img.cols - k, img.rows, EnergyType::Backward, st, true);
+}
+
+static cv::Mat CarveGC(const cv::Mat& img, int k, CarveStats* st)
+{
+    return Carve(img, img.cols - k, img.rows, MaxFlowAlgorithm::Dinic, EnergyType::Backward, st, true);
 }
 
 static cv::Mat Label(const cv::Mat& img, const std::string& text)
@@ -221,24 +213,24 @@ static cv::Mat SideBySide(const std::vector<cv::Mat>& images, int gap = 8)
 
 static void FullResize(const std::string& name, const cv::Mat& img, int k, FILE* csv)
 {
-    struct M { const char* name; SeamFinder f; };
-    const std::vector<M> methods = { { "DP", TeamDP }, { "Greedy", TeamGreedy },
-                                     { "GC Dinic", GC(MaxFlowAlgorithm::Dinic) } };
+    struct M { const char* name; CarveFn carve; };
+    const std::vector<M> methods = { { "DP", CarveDP }, { "Greedy", CarveGreedy }, { "GC Dinic", CarveGC } };
     std::vector<cv::Mat> results{ Label(img, "original") }, overlays;
     std::vector<std::vector<std::vector<cv::Point>>> allSeams;
     for (const M& m : methods)
     {
-        const CarveResult r = CarveWith(img, k, m.f);
+        CarveStats r;
+        const cv::Mat out = m.carve(img, k, &r);
         std::fprintf(csv, "%s,%s,%dx%d,%d,%.6f,%lld\n", name.c_str(), m.name, img.cols, img.rows, k,
-                     r.seconds, (long long)r.totalCost);
+                     r.seamSeconds, (long long)r.totalCost);
         std::printf("  %-10s %-10s %d seams: %8.3f s  total cost=%lld\n", name.c_str(), m.name, k,
-                    r.seconds, (long long)r.totalCost);
-        results.push_back(Label(r.out, m.name));
+                    r.seamSeconds, (long long)r.totalCost);
+        results.push_back(Label(out, m.name));
         cv::Mat vis = img.clone();
-        for (size_t s = 0; s < r.seams.size() && s < 30; ++s)
-            for (const cv::Point& p : r.seams[s]) vis.at<cv::Vec3b>(p) = cv::Vec3b(0, 0, 255);
+        for (size_t s = 0; s < r.verticalSeams.size() && s < 30; ++s)
+            for (const cv::Point& p : r.verticalSeams[s]) vis.at<cv::Vec3b>(p) = cv::Vec3b(0, 0, 255);
         overlays.push_back(Label(vis, std::string(m.name) + ": first 30 seams"));
-        allSeams.push_back(r.seams);
+        allSeams.push_back(r.verticalSeams);
     }
     cv::imwrite(OUT + "compare_" + name + ".png", SideBySide(results));
     cv::imwrite(OUT + "seams_" + name + ".png", SideBySide(overlays));

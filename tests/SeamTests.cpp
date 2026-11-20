@@ -1,13 +1,15 @@
 // ============================================================================
 // Tests for part (b): DP minimum seam (vertical and horizontal).
-// No test framework needed: build it, run it, and it prints PASS / FAIL.
+// No test framework needed (see tests/Check.h): build it, run it, and it
+// prints any failures and "N checks passed, M failed".
 //
 // CMake target: seam_tests (see CMakeLists.txt). Without CMake:
-//   g++ -std=c++14 -I. tests/SeamTests.cpp DynamicProgramming.cpp \
+//   g++ -std=c++14 -I. tests/SeamTests.cpp SeamCarving.cpp DynamicProgramming.cpp \
 //       $(pkg-config --cflags --libs opencv4) -o seam_tests
 // Restored from commit a5cf885 (it had been overwritten by a copy of
 // DynamicProgramming.cpp) and updated for the 64-bit cumulative table.
 // ============================================================================
+#include "Check.h"
 #include "DynamicProgramming.h"
 
 #include <opencv2/core.hpp>
@@ -15,34 +17,12 @@
 #include <algorithm>
 #include <climits>
 #include <cstdlib>
-#include <iostream>
 #include <limits>
 #include <random>
 #include <stdexcept>
 #include <vector>
 
-static int g_checks = 0;
-static int g_failures = 0;
-
-#define CHECK(cond)                                                          \
-    do {                                                                     \
-        ++g_checks;                                                          \
-        if (!(cond)) {                                                       \
-            ++g_failures;                                                    \
-            std::cout << "  FAIL line " << __LINE__ << ": " #cond << "\n";   \
-        }                                                                    \
-    } while (0)
-
 // ---------------------------------------------------------------- helpers --
-// True if f() throws std::invalid_argument.
-template <typename F>
-static bool Throws(F f)
-{
-    try { f(); }
-    catch (const std::invalid_argument&) { return true; }
-    return false;
-}
-
 // Build a CV_32SC1 matrix from a flat row-major list of values.
 static cv::Mat MakeEnergy(int rows, int cols, const std::vector<int>& v)
 {
@@ -101,7 +81,6 @@ static cv::Mat Transposed(const cv::Mat& m)
 // 1. A 3x3 example worked out by hand.
 static void TestHandWorkedExample()
 {
-    std::cout << "Hand-worked 3x3 example\n";
     const cv::Mat e = MakeEnergy(3, 3, { 1, 2, 3,
                                          4, 1, 6,
                                          7, 8, 1 });
@@ -124,7 +103,6 @@ static void TestHandWorkedExample()
 // 2. Horizontal seam of a matrix == vertical seam of its transpose.
 static void TestHorizontalMatchesTranspose()
 {
-    std::cout << "Horizontal seam matches vertical seam of transpose\n";
     const cv::Mat e = MakeEnergy(3, 3, { 1, 2, 3,
                                          4, 1, 6,
                                          7, 8, 1 });
@@ -139,7 +117,6 @@ static void TestHorizontalMatchesTranspose()
 // 3. The seam must avoid a wall of high energy, and ties go to the left.
 static void TestAvoidsHighEnergyColumn()
 {
-    std::cout << "Avoids a high-energy column / tie-breaking\n";
     cv::Mat e = cv::Mat::zeros(5, 6, CV_32SC1);
     for (int i = 0; i < 5; ++i) e.at<int>(i, 3) = 100;
 
@@ -156,7 +133,6 @@ static void TestAvoidsHighEnergyColumn()
 // 4. Seam shape is always valid on random input.
 static void TestSeamValidityRandom()
 {
-    std::cout << "Seam validity on random matrices\n";
     std::mt19937 rng(12345);
     std::uniform_int_distribution<int> dim(1, 12), val(0, 255);
 
@@ -176,7 +152,6 @@ static void TestSeamValidityRandom()
 // 5. The most important test: DP must match brute force on small matrices.
 static void TestOptimalityVsBruteForce()
 {
-    std::cout << "DP vs brute force (optimality)\n";
     std::mt19937 rng(2024);
     std::uniform_int_distribution<int> rowsD(1, 7), colsD(1, 7), val(0, 20);
 
@@ -200,7 +175,6 @@ static void TestOptimalityVsBruteForce()
 // 6. Tiny and degenerate shapes.
 static void TestEdgeCases()
 {
-    std::cout << "Edge cases (1x1, 1xN, Nx1)\n";
 
     const cv::Mat one = MakeEnergy(1, 1, { 7 });
     CHECK((DP::FindVerticalSeam(one) == std::vector<int>{ 0 }));
@@ -220,7 +194,6 @@ static void TestEdgeCases()
 // 7. Bad input must throw instead of crashing.
 static void TestInvalidInput()
 {
-    std::cout << "Invalid input throws\n";
 
     bool threw = false;
     try { DP::FindVerticalSeam(cv::Mat()); }
@@ -259,7 +232,6 @@ static void TestInvalidInput()
 // 9. The 64-bit table: sums beyond INT_MAX stay exact (no overflow).
 static void TestNoOverflow()
 {
-    std::cout << "64-bit table: no overflow\n";
     const int rows = 10, big = INT_MAX / 2;
     const cv::Mat e(rows, 2, CV_32SC1, cv::Scalar(big));
     const long long expected = static_cast<long long>(big) * rows;   // > INT_MAX
@@ -276,7 +248,6 @@ static void TestNoOverflow()
 // 8. Integration with part (a): real ComputeEnergy output on a tiny image.
 static void TestWithComputeEnergy()
 {
-    std::cout << "Integration with DP::ComputeEnergy\n";
 
     // 8x8 gray image: a bright stripe in columns 3-4, black elsewhere.
     cv::Mat img = cv::Mat::zeros(8, 8, CV_8UC1);
@@ -295,16 +266,15 @@ static void TestWithComputeEnergy()
 
 int main()
 {
-    TestHandWorkedExample();
-    TestHorizontalMatchesTranspose();
-    TestAvoidsHighEnergyColumn();
-    TestSeamValidityRandom();
-    TestOptimalityVsBruteForce();
-    TestEdgeCases();
-    TestInvalidInput();
-    TestWithComputeEnergy();
-    TestNoOverflow();
-
-    std::cout << "\n" << (g_checks - g_failures) << "/" << g_checks << " checks passed\n";
-    return g_failures == 0 ? 0 : 1;
+    return RunTests({
+        { "hand-worked 3x3 example", TestHandWorkedExample },
+        { "horizontal seam == vertical seam of transpose", TestHorizontalMatchesTranspose },
+        { "avoids a high-energy column / tie-breaking", TestAvoidsHighEnergyColumn },
+        { "seam validity on random matrices", TestSeamValidityRandom },
+        { "DP vs brute force (optimality)", TestOptimalityVsBruteForce },
+        { "edge cases (1x1, 1xN, Nx1)", TestEdgeCases },
+        { "invalid input throws", TestInvalidInput },
+        { "integration with ComputeEnergy", TestWithComputeEnergy },
+        { "64-bit table: no overflow", TestNoOverflow },
+    });
 }

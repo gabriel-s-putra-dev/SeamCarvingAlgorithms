@@ -7,33 +7,46 @@ vertical and horizontal seams. OpenCV is used only for image I/O, `cvtColor`,
 
 | File | Purpose |
 |---|---|
-| [`DynamicProgramming.h`](../../DynamicProgramming.h) / [`DynamicProgramming.cpp`](../../DynamicProgramming.cpp) | Energy map, cumulative table, vertical/horizontal seams, seam removal, carve loop, seam overlay |
-| [`main.cpp`](../../main.cpp) | Algorithm menu: DP or Graph Cut (Dinic / Edmonds–Karp), backward or forward energy |
-| [`tests/DynamicProgrammingTests.cpp`](../../tests/DynamicProgrammingTests.cpp) | Energy map tests (327 checks) |
+| [`DynamicProgramming.h`](../../DynamicProgramming.h) / [`DynamicProgramming.cpp`](../../DynamicProgramming.cpp) | Step (b): cumulative table, vertical/horizontal seams, seam energy; `DP::Carve` (the shared loop with the DP seam finder) |
+| [`SeamCarving.h`](../../SeamCarving.h) / [`SeamCarving.cpp`](../../SeamCarving.cpp) | Shared by DP, Greedy and Graph Cut: energy map (step a), seam removal and the remove-and-repeat loop (step c), `CarveStats`, seam overlay. Re-exported as `DP::ComputeEnergy`, `DP::CarveStats`, `DP::DrawSeams`, … |
+| [`main.cpp`](../../main.cpp) | Algorithm menu: DP, Graph Cut (Dinic / Edmonds–Karp) or Greedy, backward or forward energy |
+| [`tests/DynamicProgrammingTests.cpp`](../../tests/DynamicProgrammingTests.cpp) | Energy map tests (230 checks) |
 | [`tests/SeamTests.cpp`](../../tests/SeamTests.cpp) | Minimum-seam tests for step (b) (1 054 checks) |
 | [`tests/CarveTests.cpp`](../../tests/CarveTests.cpp) | Seam removal and carve loop tests (80 checks) |
 | [`results/`](results) | Output images used below |
 
 ## Quick start
 
-Windows, "x64 Native Tools Command Prompt for VS 2022", from the repository root
-(adjust `CV` to where OpenCV 4 is unpacked):
+With CMake (see the top of [`CMakeLists.txt`](../../CMakeLists.txt)), from the
+repository root:
+
+```bat
+cmake --preset vs2022
+cmake --build --preset vs2022-release
+out\build\vs2022\Release\seam_carve.exe images\tower.png out.png 194 0 dp
+rem run every test suite:
+ctest --preset vs2022-release
+```
+
+Without CMake, Windows, "x64 Native Tools Command Prompt for VS 2022" (adjust
+`CV` to where OpenCV 4 is unpacked):
 
 ```bat
 set CV=C:\opencv\build
 set PATH=%CV%\x64\vc16\bin;%PATH%
-cl /nologo /std:c++14 /EHsc /O2 /MD /I. /I"%CV%\include" main.cpp DynamicProgramming.cpp GraphCutting.cpp /Fo:build\ /Fe:build\seamcarve.exe /link /LIBPATH:"%CV%\x64\vc16\lib" opencv_world4140.lib
+set SRC=SeamCarving.cpp DynamicProgramming.cpp GreedyAlgorithm.cpp GraphCutting.cpp
+cl /nologo /std:c++14 /EHsc /O2 /MD /I. /I"%CV%\include" main.cpp %SRC% /Fo:build\ /Fe:build\seamcarve.exe /link /LIBPATH:"%CV%\x64\vc16\lib" opencv_world4140.lib
 build\seamcarve.exe images\tower.png build\out.png 194 0 dp
 ```
 
 Linux / macOS:
 
 ```bash
-g++ -std=c++14 -O2 -I. main.cpp DynamicProgramming.cpp GraphCutting.cpp -o seamcarve `pkg-config --cflags --libs opencv4`
+g++ -std=c++14 -O2 -I. main.cpp SeamCarving.cpp DynamicProgramming.cpp GreedyAlgorithm.cpp GraphCutting.cpp -o seamcarve `pkg-config --cflags --libs opencv4`
 ./seamcarve images/tower.png out.png 194 0 dp
 ```
 
-`seamcarve <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek> [backward|forward]`.
+`seamcarve <input> <output> <newWidth> <newHeight> <dp|gc-dinic|gc-ek|greedy> [backward|forward]`.
 A width or height of **0 keeps the original size**; run it with no arguments
 for an interactive menu (Enter keeps the size). It writes the resized image
 and `<output>_seams.png` (removed seams on the original: red = vertical,
@@ -65,8 +78,9 @@ grayscale image:
 * **Simplified forward**: `c[i][j] = |I[i][j+1] − I[i][j−1]|`, the new edge
   created when pixel (i, j) is removed and its left and right neighbours meet.
 
-Both formulas are identical to `GraphCut::ComputeEnergy`, so all methods are
-compared on the same cost map (the tests check this pixel for pixel).
+The energy map lives in [`SeamCarving.cpp`](../../SeamCarving.cpp) and is
+shared by DP, Greedy and Graph Cut, so all methods are compared on exactly the
+same cost map.
 
 ### 1.2 Minimum seam (step b)
 
@@ -105,7 +119,13 @@ neighbours that were not before, so the old map no longer describes the image.
 
 Vertical seams (width) are removed first. The image is then transposed once,
 the same loop removes seams until the height is reached, and the result is
-transposed back. This is the same order as `GraphCut::Carve`.
+transposed back.
+
+This loop (`SeamCarving::CarveWith` in [`SeamCarving.cpp`](../../SeamCarving.cpp))
+takes the seam finder as a parameter and is shared by all three methods:
+`DP::Carve` passes `DP::FindVerticalSeam`, `Greedy::Carve` and `GraphCut::Carve`
+pass theirs. The removal, carving order and statistics are therefore
+identical, and the methods differ only in how each seam is chosen.
 
 `RemoveVerticalSeam` copies each row into an image one column narrower,
 skipping the seam pixel. It copies raw bytes (`elemSize`), so it works for any
@@ -218,13 +238,16 @@ Shamir (2007), would usually bend edges less. This is not implemented.
 
 | Suite | Checks | What it covers |
 |---|---|---|
-| `tests/DynamicProgrammingTests.cpp` | 327 | Energy type/size, flat image = 0, step edges, hand-computed forward values, 1/3/4 channels, empty input, equal to `GraphCut::ComputeEnergy` on random images and both sample images |
+| `tests/DynamicProgrammingTests.cpp` | 230 | Energy type/size, flat image = 0, step edges, hand-computed forward values, 1/3/4 channels, empty input, DP / Greedy / Graph Cut all use the one shared energy function, both sample images |
 | `tests/SeamTests.cpp` | 1 054 | Step (b): hand-worked table (64-bit `M`), horizontal = transposed vertical, tie-breaking, brute-force optimality on 300 random maps, 1×1/1×N/N×1, invalid input (empty, wrong type, negative energy, disconnected or out-of-range seams), no overflow beyond `INT_MAX`, `ComputeEnergy` integration |
 | `tests/CarveTests.cpp` | 80 | Seam removal (hand examples, colour, coordinate map), invalid seams, output sizes, `Carve` equal to a hand-written energy → seam → remove loop, recorded seams cover every removed pixel exactly once, reference totals (430 676 / 16 400 / 668 244), pixel-identical to `GraphCut::Carve` with both energies |
 
-Build and run any suite like the quick start, replacing `main.cpp` with the
-test file (the tests that compare with graph cut also need `GraphCutting.cpp`).
-Run from the repository root so `images/` is found.
+After building, `ctest --preset vs2022-release` (or `ctest -C Release` in the
+build folder) runs all six suites (`dp_tests`, `seam_tests`, `carve_tests`,
+`gc_tests`, `greedy_tests`, `gc_vs_dp`) from the repository root, so `images/`
+is found. Each suite can also be run on its own; the test
+programs share their `CHECK` macro and helpers through
+[`tests/Check.h`](../../tests/Check.h).
 
 ## 5. Discussion
 

@@ -20,12 +20,13 @@
 //   * each step   : prefer straight (down / right), then the smaller index
 //                   (left / up), then the larger index (right / down).
 //
-// The energy map is DP::ComputeEnergy, so Greedy, DP and Graph Cut are
-// compared on identical cost maps. OpenCV is only used for image I/O, colour
-// conversion and the Sobel filter; no content-aware resizing function from
-// any library is used.
+// The energy map, seam removal, the carving loop and the seam overlay are
+// shared with DP and Graph Cut (SeamCarving.h), so the three methods are
+// compared on identical cost maps and differ only in how each seam is chosen.
+// OpenCV is only used for image I/O, colour conversion and the Sobel filter;
+// no content-aware resizing function from any library is used.
 // ============================================================================
-#include "DynamicProgramming.h"
+#include "SeamCarving.h"
 
 #include <opencv2/core.hpp>
 
@@ -34,8 +35,13 @@
 
 namespace Greedy
 {
-    // Same energy options as DP (Backward = Sobel, Forward = |I[i][j+1] - I[i][j-1]|).
-    using EnergyType = DP::EnergyType;
+    // Shared energy map, removal, stats and overlay (see SeamCarving.h).
+    using EnergyType = SeamCarving::EnergyType;   // Backward = Sobel, Forward = |I[i][j+1] - I[i][j-1]|
+    using SeamCarving::ComputeEnergy;
+    using SeamCarving::RemoveVerticalSeam;
+    using SeamCarving::RemoveHorizontalSeam;
+    using SeamCarving::CarveStats;
+    using SeamCarving::DrawSeams;
 
     struct SeamResult
     {
@@ -50,43 +56,16 @@ namespace Greedy
     //
     // NOTE on FORWARD energy: it compares left and right neighbours, so it is
     // the right cost for VERTICAL seams only. For a horizontal seam with
-    // forward energy use FindVerticalSeam(DP::ComputeEnergy(img.t(), Forward))
-    // on the transposed image (Carve does this). See DP::FindHorizontalSeam.
+    // forward energy use FindVerticalSeam(ComputeEnergy(img.t(), Forward))
+    // on the transposed image (Carve does this). See SeamCarving::ComputeEnergy.
     SeamResult FindVerticalSeam(const cv::Mat& energy);
     SeamResult FindHorizontalSeam(const cv::Mat& energy);
 
-    // Remove one pixel per row (vertical) / per column (horizontal), in place.
-    // Works on any Mat type (image or energy map). img shrinks by one column /
-    // row. Throws std::invalid_argument if the seam length or any index does
-    // not match img.
-    void RemoveVerticalSeam(cv::Mat& img, const std::vector<int>& seam);
-    void RemoveHorizontalSeam(cv::Mat& img, const std::vector<int>& seam);
-
-    struct CarveStats
-    {
-        // Times and costs ACCUMULATE if the same stats object is passed to
-        // several Carve calls (same behaviour as GraphCut::CarveStats).
-        double seamSeconds = 0.0;        // time spent finding seams (energy + greedy walk)
-        double totalSeconds = 0.0;       // whole Carve call, including removals
-        int64_t totalCost = 0;           // sum of all removed seam costs
-        std::vector<int64_t> seamCosts;  // cost of each removed seam, in removal order
-        // Original-image (x = col, y = row) coordinates of every removed seam,
-        // filled only when recordSeams is true. Used by DrawSeams.
-        std::vector<std::vector<cv::Point>> verticalSeams, horizontalSeams;
-    };
-
     // Shrink img to newWidth x newHeight: vertical seams first, then
     // horizontal. The energy map is recomputed after every removal.
-    // Requires 1 <= newWidth <= img.cols and 1 <= newHeight <= img.rows,
-    // otherwise throws std::invalid_argument. stats may be nullptr.
+    // Runs SeamCarving::CarveWith with the greedy FindVerticalSeam; see there
+    // for stats (which accumulate over calls), recordSeams and errors.
     cv::Mat Carve(const cv::Mat& img, int newWidth, int newHeight,
                   EnergyType energy = EnergyType::Backward,
                   CarveStats* stats = nullptr, bool recordSeams = false);
-
-    // Copy of the original image with all removed seams drawn
-    // (red = vertical, green = horizontal). Needs stats from a Carve call
-    // made with recordSeams = true. Throws std::invalid_argument if original
-    // is empty / not 8-bit, or a seam point lies outside it (stats from a
-    // different image).
-    cv::Mat DrawSeams(const cv::Mat& original, const CarveStats& stats);
 }

@@ -43,5 +43,10 @@
     { "name": "x64-release", "configurePreset": "x64-release" },
     { "name": "x64-debug", "configurePreset": "x64-debug" },
     { "name": "unix-release", "configurePreset": "unix-release" }
+  ],
+  "testPresets": [
+    { "name": "vs2022-release", "configurePreset": "vs2022", "configuration": "Release", "output": { "outputOnFailure": true } },
+    { "name": "x64-release", "configurePreset": "x64-release", "output": { "outputOnFailure": true } },
+    { "name": "unix-release", "configurePreset": "unix-release", "output": { "outputOnFailure": true } }
   ]
 }

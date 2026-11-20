@@ -1,15 +1,16 @@
-// Correctness tests for DynamicProgramming.cpp — step (c): remove the seam and
-// repeat (RemoveVerticalSeam, RemoveHorizontalSeam, Carve, DrawSeams).
-// Self-contained (no test framework). Build from the repo root, e.g. in the
-// "x64 Native Tools Command Prompt for VS 2022":
-//   cl /std:c++14 /EHsc /O2 /MD /I. /I"%CV%\include" tests\CarveTests.cpp DynamicProgramming.cpp GraphCutting.cpp
-//      /Fo:build\ /Fe:build\carve_tests.exe /link /LIBPATH:"%CV%\x64\vc16\lib" opencv_world4140.lib
-//   build\carve_tests.exe        (run from the repo root so images\ is found)
+// Correctness tests for step (c): remove the seam and repeat
+// (RemoveVerticalSeam, RemoveHorizontalSeam, Carve, DrawSeams), through the DP
+// module. The removal, loop and overlay live in SeamCarving.cpp and are shared
+// with Greedy and Graph Cut.
+// Build and run from the repo root:
+//   cmake --build --preset vs2022-release --target carve_tests
+//   out\build\vs2022\Release\carve_tests.exe     (or: ctest --preset vs2022-release)
 // or with g++:
-//   g++ -std=c++14 -O2 -I. tests/CarveTests.cpp DynamicProgramming.cpp GraphCutting.cpp -o carve_tests `pkg-config --cflags --libs opencv4`
+//   g++ -std=c++14 -O2 -I. tests/CarveTests.cpp SeamCarving.cpp DynamicProgramming.cpp GraphCutting.cpp -o carve_tests `pkg-config --cflags --libs opencv4`
 //
 // GraphCutting.cpp is linked to check that DP::Carve and GraphCut::Carve give
 // pixel-identical results: both return the leftmost optimal seam.
+#include "Check.h"
 #include "DynamicProgramming.h"
 #include "GraphCutting.h"
 
@@ -19,26 +20,10 @@
 #include <chrono>
 #include <cstdio>
 #include <functional>
-#include <initializer_list>
 #include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
-
-static int g_failed = 0, g_passed = 0;
-#define CHECK(cond)                                                                 \
-    do {                                                                            \
-        if (cond) ++g_passed;                                                       \
-        else { ++g_failed; std::printf("  FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } \
-    } while (0)
-
-// True if fn() throws std::invalid_argument.
-static bool Throws(const std::function<void()>& fn)
-{
-    try { fn(); }
-    catch (const std::invalid_argument&) { return true; }
-    return false;
-}
 
 static bool SameMat(const cv::Mat& a, const cv::Mat& b)
 {
@@ -374,7 +359,7 @@ static void Timing()
 
 int main()
 {
-    const std::vector<std::pair<const char*, std::function<void()>>> tests = {
+    const int result = RunTests({
         { "remove vertical seam", TestRemoveVertical },
         { "remove horizontal seam", TestRemoveHorizontal },
         { "invalid removal throws", TestInvalidRemoval },
@@ -384,15 +369,7 @@ int main()
         { "reference totals (tower, synthetic)", TestReferenceTotals },
         { "DP carve == Graph Cut carve", TestMatchesGraphCut },
         { "forward energy carve", TestForwardCarve },
-    };
-    for (const auto& test : tests)
-    {
-        const int before = g_failed;
-        std::printf("[%s]\n", test.first);
-        test.second();
-        if (g_failed == before) std::printf("  ok\n");
-    }
-    std::printf("\n%d checks passed, %d failed\n", g_passed, g_failed);
+    });
     Timing();
-    return g_failed == 0 ? 0 : 1;
+    return result;
 }

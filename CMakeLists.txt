@@ -9,6 +9,7 @@
 #   cmake --preset vs2022
 #   cmake --build --preset vs2022-release
 #   -> out/build/vs2022/Release/*.exe
+#   ctest --preset vs2022-release      (runs all test suites)
 # The Ninja presets (x64-release/x64-debug) only work from an
 # "x64 Native Tools Command Prompt for VS 2022".
 # Linux / macOS: cmake --preset unix-release && cmake --build --preset unix-release
@@ -71,8 +72,10 @@ if(MSVC)
     add_compile_definitions(_CRT_SECURE_NO_WARNINGS)   # fopen in the benchmarks
 endif()
 
-# The three algorithms, shared by every program below.
+# The three algorithms plus the pipeline they share (energy map, seam removal,
+# carving loop, seam overlay), used by every program below.
 add_library(seam_carving STATIC
+    SeamCarving.cpp        SeamCarving.h
     DynamicProgramming.cpp DynamicProgramming.h
     GreedyAlgorithm.cpp    GreedyAlgorithm.h
     GraphCutting.cpp       GraphCutting.h)
@@ -104,3 +107,10 @@ seam_program(gc_mem       tests/GraphCuttingMemory.cpp)
 seam_program(dp_tests     tests/DynamicProgrammingTests.cpp)
 seam_program(seam_tests   tests/SeamTests.cpp)
 seam_program(carve_tests  tests/CarveTests.cpp)
+
+# "ctest" runs every test suite (from the repo root, so images/ is found):
+#   ctest --preset vs2022-release        (or: ctest -C Release in the build folder)
+enable_testing()
+foreach(test dp_tests seam_tests carve_tests gc_tests greedy_tests gc_vs_dp)
+    add_test(NAME ${test} COMMAND ${test} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endforeach()

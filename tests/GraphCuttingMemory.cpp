@@ -10,7 +10,7 @@
 //   python tools/run_graphcut_memory.py          (writes results/memory_peak.csv + chart)
 //
 // Build from the repo root:
-//   g++ -std=c++14 -O2 -I. tests/GraphCuttingMemory.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_mem `pkg-config --cflags --libs opencv4`
+//   g++ -std=c++14 -O2 -I. tests/GraphCuttingMemory.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_mem `pkg-config --cflags --libs opencv4`
 // Single run:
 //   ./gc_mem <dp|gc-dinic|gc-ek> <width>
 //   -> prints one CSV line: method,width,height,pixels,baseline_bytes,peak_bytes,delta_bytes,seconds,seam_cost,note
@@ -111,7 +111,7 @@ int main(int argc, char** argv)
     const int h = static_cast<int>(std::lround(double(w) * tower.rows / tower.cols));
     cv::Mat img;
     cv::resize(tower, img, cv::Size(w, h), 0, 0, cv::INTER_AREA);
-    const cv::Mat cost = GraphCut::ComputeEnergy(img);   // identical to DP::ComputeEnergy (tested)
+    const cv::Mat cost = GraphCut::ComputeEnergy(img);   // the shared SeamCarving::ComputeEnergy
 
 #if defined(__GLIBC__)
     malloc_trim(0);

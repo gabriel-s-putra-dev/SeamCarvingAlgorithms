@@ -1,12 +1,15 @@
 // Correctness tests + quick benchmark for GraphCutting.cpp.
-// Self-contained (no test framework). Build from the repo root:
-//   g++ -std=c++14 -O2 -I. tests/GraphCuttingTests.cpp GraphCutting.cpp -o gc_tests `pkg-config --cflags --libs opencv4`
-//   ./gc_tests            (run from the repo root so images/ is found)
+// Build and run from the repo root:
+//   cmake --build --preset vs2022-release --target gc_tests
+//   out\build\vs2022\Release\gc_tests.exe     (or: ctest --preset vs2022-release)
+// or with g++:
+//   g++ -std=c++14 -O2 -I. tests/GraphCuttingTests.cpp SeamCarving.cpp GraphCutting.cpp DynamicProgramming.cpp -o gc_tests `pkg-config --cflags --libs opencv4`
 //
 // Key check: by the max-flow min-cut theorem, the graph-cut seam must have
-// EXACTLY the same total cost as the DP optimum on the same cost map.
-// RefDP below is a tiny reference used only for this check; the team's real
-// DP lives in DynamicProgramming.cpp.
+// EXACTLY the same total cost as the DP optimum on the same cost map. The
+// optimum comes from the team's DP (TeamDPCost in tests/Check.h), which is
+// itself checked against brute force in tests/SeamTests.cpp.
+#include "Check.h"
 #include "GraphCutting.h"
 
 #include <opencv2/imgcodecs.hpp>
@@ -15,52 +18,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
-#include <functional>
 #include <random>
 #include <string>
 #include <vector>
 
 using namespace GraphCut;
-
-static int g_failed = 0, g_passed = 0;
-#define CHECK(cond)                                                                 \
-    do {                                                                            \
-        if (cond) ++g_passed;                                                       \
-        else { ++g_failed; std::printf("  FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond); } \
-    } while (0)
-
-// ---------------------------------------------------------------------------
-// Reference DP: M[i][j] = c[i][j] + min(M[i-1][j-1..j+1]); returns min cost.
-// ---------------------------------------------------------------------------
-static int64_t RefDPCost(const cv::Mat& c, std::vector<int>* seamOut = nullptr)
-{
-    const int m = c.rows, n = c.cols;
-    std::vector<int64_t> M(static_cast<size_t>(m) * n);
-    std::vector<int> back(static_cast<size_t>(m) * n, 0);
-    for (int j = 0; j < n; ++j) M[j] = c.at<int>(0, j);
-    for (int i = 1; i < m; ++i)
-        for (int j = 0; j < n; ++j)
-        {
-            int best = -1;   // ties broken towards the left (j-1, then j, then j+1)
-            for (int d = -1; d <= 1; ++d)
-            {
-                const int k = j + d;
-                if (k >= 0 && k < n && (best < 0 || M[(i - 1) * n + k] < M[(i - 1) * n + best])) best = k;
-            }
-            M[i * n + j] = c.at<int>(i, j) + M[(i - 1) * n + best];
-            back[i * n + j] = best;
-        }
-    int j = 0;
-    for (int k = 1; k < n; ++k)
-        if (M[(m - 1) * n + k] < M[(m - 1) * n + j]) j = k;
-    const int64_t best = M[(m - 1) * n + j];
-    if (seamOut)
-    {
-        seamOut->assign(m, 0);
-        for (int i = m - 1; i >= 0; --i) { (*seamOut)[i] = j; j = back[i * n + j]; }
-    }
-    return best;
-}
 
 static bool ValidSeam(const std::vector<int>& seam, int n)
 {
@@ -70,14 +32,6 @@ static bool ValidSeam(const std::vector<int>& seam, int n)
         if (i > 0 && std::abs(seam[i] - seam[i - 1]) > 1) return false;
     }
     return true;
-}
-
-static cv::Mat FromRows(const std::vector<std::vector<int>>& rows)
-{
-    cv::Mat c(static_cast<int>(rows.size()), static_cast<int>(rows[0].size()), CV_32S);
-    for (int i = 0; i < c.rows; ++i)
-        for (int j = 0; j < c.cols; ++j) c.at<int>(i, j) = rows[i][j];
-    return c;
 }
 
 static const MaxFlowAlgorithm ALGOS[] = { MaxFlowAlgorithm::Dinic, MaxFlowAlgorithm::EdmondsKarp };
@@ -131,7 +85,7 @@ static void TestRandomCostMapsMatchDP()
             for (int i = 0; i < m; ++i)
                 for (int j = 0; j < n; ++j) c.at<int>(i, j) = rng() % 50;
             const SeamResult r = FindVerticalSeam(c, algo);
-            CHECK(r.cost == RefDPCost(c));
+            CHECK(r.cost == TeamDPCost(c));
             CHECK(ValidSeam(r.seam, n));
             CHECK(r.flow == r.cost);
         }
@@ -149,7 +103,7 @@ static void TestEdgeCases()
     for (const cv::Mat& c : cases)
     {
         const SeamResult r = FindVerticalSeam(c);
-        CHECK(r.cost == RefDPCost(c));
+        CHECK(r.cost == TeamDPCost(c));
         CHECK(ValidSeam(r.seam, c.cols));
     }
 }
@@ -175,7 +129,7 @@ static void TestConnectivityEnforced()
     c.at<int>(0, 0) = c.at<int>(1, 5) = c.at<int>(2, 0) = c.at<int>(3, 5) = 0;
     const SeamResult r = FindVerticalSeam(c);
     CHECK(ValidSeam(r.seam, 6));
-    CHECK(r.cost == RefDPCost(c) && r.cost > 0);
+    CHECK(r.cost == TeamDPCost(c) && r.cost > 0);
 }
 
 static void TestGraphSize()
@@ -219,7 +173,7 @@ static void TestCarveLoop()
     {
         const cv::Mat c = ComputeEnergy(img, energy);
         CHECK(c.type() == CV_32SC1 && c.size() == img.size());
-        CHECK(FindVerticalSeam(c).cost == RefDPCost(c));
+        CHECK(FindVerticalSeam(c).cost == TeamDPCost(c));
     }
     CarveStats st;
     const cv::Mat out = Carve(img, 25, 20, MaxFlowAlgorithm::Dinic, EnergyType::Backward, &st, true);
@@ -244,29 +198,25 @@ static void TestCarveLoop()
 
     // Bad seams throw std::invalid_argument (like DP and Greedy) and leave the
     // image unchanged.
-    auto throwsInvalid = [](const std::function<void()>& f) {
-        try { f(); } catch (const std::invalid_argument&) { return true; } catch (...) { return false; }
-        return false;
-    };
     const cv::Mat e = FromRows({ { 0, 1, 2, 3 }, { 4, 5, 6, 7 }, { 8, 9, 10, 11 } });
     cv::Mat m = e.clone();
-    CHECK(throwsInvalid([&] { RemoveVerticalSeam(m, { 0, 1 }); }));          // wrong length
-    CHECK(throwsInvalid([&] { RemoveVerticalSeam(m, { 0, 1, 4 }); }));       // out of range
-    CHECK(throwsInvalid([&] { RemoveVerticalSeam(m, { 0, -1, 0 }); }));      // negative
-    CHECK(throwsInvalid([&] { RemoveHorizontalSeam(m, { 0, 1, 2 }); }));     // wrong length
-    CHECK(throwsInvalid([&] { RemoveHorizontalSeam(m, { 0, 1, 3, 0 }); }));  // out of range
+    CHECK(Throws([&] { RemoveVerticalSeam(m, { 0, 1 }); }));          // wrong length
+    CHECK(Throws([&] { RemoveVerticalSeam(m, { 0, 1, 4 }); }));       // out of range
+    CHECK(Throws([&] { RemoveVerticalSeam(m, { 0, -1, 0 }); }));      // negative
+    CHECK(Throws([&] { RemoveHorizontalSeam(m, { 0, 1, 2 }); }));     // wrong length
+    CHECK(Throws([&] { RemoveHorizontalSeam(m, { 0, 1, 3, 0 }); }));  // out of range
     CHECK(m.size() == e.size() && cv::countNonZero(m != e) == 0);            // untouched
     cv::Mat thin(3, 1, CV_32S, cv::Scalar(0)), flat(1, 3, CV_32S, cv::Scalar(0)), empty;
-    CHECK(throwsInvalid([&] { RemoveVerticalSeam(thin, { 0, 0, 0 }); }));
-    CHECK(throwsInvalid([&] { RemoveHorizontalSeam(flat, { 0, 0, 0 }); }));
-    CHECK(throwsInvalid([&] { RemoveVerticalSeam(empty, {}); }));
+    CHECK(Throws([&] { RemoveVerticalSeam(thin, { 0, 0, 0 }); }));
+    CHECK(Throws([&] { RemoveHorizontalSeam(flat, { 0, 0, 0 }); }));
+    CHECK(Throws([&] { RemoveVerticalSeam(empty, {}); }));
 
     // DrawSeams rejects seams that do not belong to the image.
     CHECK(DrawSeams(img, st).size() == img.size());
     const cv::Mat small(10, 10, CV_8UC3, cv::Scalar(0, 0, 0));
-    CHECK(throwsInvalid([&] { DrawSeams(small, st); }));                     // stats from a bigger image
-    CHECK(throwsInvalid([&] { DrawSeams(cv::Mat(), st); }));
-    CHECK(throwsInvalid([&] { DrawSeams(cv::Mat(24, 30, CV_32FC3), st); })); // not 8-bit
+    CHECK(Throws([&] { DrawSeams(small, st); }));                     // stats from a bigger image
+    CHECK(Throws([&] { DrawSeams(cv::Mat(), st); }));
+    CHECK(Throws([&] { DrawSeams(cv::Mat(24, 30, CV_32FC3), st); })); // not 8-bit
 }
 
 // Same image as the Python prototype: first seam cost must be 2446. Then carve
@@ -281,7 +231,7 @@ static void TestTowerImage()
     const cv::Mat c = ComputeEnergy(img);
     const SeamResult r = FindVerticalSeam(c);
     CHECK(r.cost == 2446);
-    CHECK(r.cost == RefDPCost(c));
+    CHECK(r.cost == TeamDPCost(c));
 
     cv::Mat cur = img.clone();
     int identical = 0, costMatches = 0;
@@ -289,7 +239,7 @@ static void TestTowerImage()
     {
         const cv::Mat e = ComputeEnergy(cur);
         std::vector<int> dpSeam;
-        const int64_t dpCost = RefDPCost(e, &dpSeam);
+        const int64_t dpCost = TeamDPCost(e, &dpSeam);
         const SeamResult g = FindVerticalSeam(e);
         costMatches += (g.cost == dpCost);
         identical += (dpSeam == g.seam);
@@ -317,14 +267,14 @@ static void Benchmark()
                     (long long)r.augmentations, (long long)r.phases);
     }
     const auto t0 = std::chrono::steady_clock::now();
-    RefDPCost(c);
-    std::printf("  %-12s %8.2f ms  (reference DP)\n", "DP",
+    TeamDPCost(c);
+    std::printf("  %-12s %8.2f ms  (team DP)\n", "DP",
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
 }
 
 int main()
 {
-    const std::vector<std::pair<const char*, std::function<void()>>> tests = {
+    const int result = RunTests({
         { "max-flow hand examples", TestMaxFlowHandExamples },
         { "Dinic == Edmonds-Karp on random graphs", TestAlgorithmsAgreeOnRandomGraphs },
         { "random cost maps: GC cost == DP cost", TestRandomCostMapsMatchDP },
@@ -335,15 +285,7 @@ int main()
         { "horizontal seam and removal", TestHorizontalSeamAndRemoval },
         { "carve loop", TestCarveLoop },
         { "tower image vs DP", TestTowerImage },
-    };
-    for (const auto& test : tests)
-    {
-        const int before = g_failed;
-        std::printf("[%s]\n", test.first);
-        test.second();
-        if (g_failed == before) std::printf("  ok\n");
-    }
-    std::printf("\n%d checks passed, %d failed\n", g_passed, g_failed);
+    });
     Benchmark();
-    return g_failed == 0 ? 0 : 1;
+    return result;
 }

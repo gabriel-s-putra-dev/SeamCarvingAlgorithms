@@ -13,8 +13,9 @@
 //   zoom_tower.png           the tower region of each result, enlarged 2x
 //   compare_tower_forward.png  Greedy vs DP with the forward energy
 //
-// "Optimal" is a small reference DP (same recurrence as the team's DP and the
-// same cost as graph cut, see tests/GraphCuttingTests.cpp).
+// "Optimal" is the team's DP (DynamicProgramming.cpp), which gives the same
+// cost as graph cut (see tests/GraphCutVsTeamDPTests.cpp). Both methods carve
+// with the shared SeamCarving::CarveWith loop via their module's Carve.
 #include "DynamicProgramming.h"
 #include "GreedyAlgorithm.h"
 
@@ -42,37 +43,6 @@ static FILE* OpenCsv(const std::string& name)
         std::exit(1);
     }
     return f;
-}
-
-// ---------------------------------------------------------------------------
-// Reference DP seam (leftmost optimum on ties) on a CV_32S cost map.
-// ---------------------------------------------------------------------------
-static Greedy::SeamResult RefDP(const cv::Mat& c)
-{
-    const int m = c.rows, n = c.cols;
-    std::vector<int64_t> M(static_cast<size_t>(m) * n);
-    std::vector<int> back(static_cast<size_t>(m) * n, 0);
-    for (int j = 0; j < n; ++j) M[j] = c.at<int>(0, j);
-    for (int i = 1; i < m; ++i)
-    {
-        const int* row = c.ptr<int>(i);
-        for (int j = 0; j < n; ++j)
-        {
-            int best = -1;
-            for (int k = std::max(j - 1, 0); k <= std::min(j + 1, n - 1); ++k)
-                if (best < 0 || M[(i - 1) * n + k] < M[(i - 1) * n + best]) best = k;
-            M[i * n + j] = row[j] + M[(i - 1) * n + best];
-            back[i * n + j] = best;
-        }
-    }
-    int j = 0;
-    for (int k = 1; k < n; ++k)
-        if (M[(m - 1) * n + k] < M[(m - 1) * n + j]) j = k;
-    Greedy::SeamResult r;
-    r.cost = M[(m - 1) * n + j];
-    r.seam.resize(m);
-    for (int i = m - 1; i >= 0; --i) { r.seam[i] = j; j = back[i * n + j]; }
-    return r;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,7 +76,8 @@ static void RandomMaps()
                 }
                 cv::Mat c;
                 noise.convertTo(c, CV_32S);
-                const int64_t g = Greedy::FindVerticalSeam(c).cost, d = RefDP(c).cost;
+                const int64_t g = Greedy::FindVerticalSeam(c).cost;
+                const int64_t d = DP::SeamEnergy(c, DP::FindVerticalSeam(c), true);
                 ratios.push_back(d > 0 ? double(g) / d : 1.0);
                 optimal += (g == d);
             }
@@ -128,35 +99,16 @@ static void RandomMaps()
 struct Carved
 {
     cv::Mat out;
-    int64_t totalCost = 0;
-    std::vector<std::vector<cv::Point>> seams;   // original coordinates
+    SeamCarving::CarveStats st;   // st.verticalSeams: removed seams, original coordinates
 };
 
-using Finder = std::function<Greedy::SeamResult(const cv::Mat&)>;
-
-// Remove k vertical seams with the given seam finder, recording each seam in
-// original-image coordinates (same bookkeeping as Greedy::Carve).
-static Carved CarveVertical(const cv::Mat& img, int k, DP::EnergyType energy, const Finder& find)
+// Remove k vertical seams with Greedy or DP (both run the shared carving loop,
+// SeamCarving::CarveWith, and record each seam in original-image coordinates).
+static Carved CarveVertical(const cv::Mat& img, int k, SeamCarving::EnergyType energy, bool greedy)
 {
     Carved r;
-    r.out = img.clone();
-    cv::Mat coords(img.rows, img.cols, CV_32SC2);
-    for (int y = 0; y < img.rows; ++y)
-        for (int x = 0; x < img.cols; ++x) coords.at<cv::Vec2i>(y, x) = cv::Vec2i(x, y);
-    for (int s = 0; s < k; ++s)
-    {
-        const Greedy::SeamResult seam = find(DP::ComputeEnergy(r.out, energy));
-        r.totalCost += seam.cost;
-        std::vector<cv::Point> pts(r.out.rows);
-        for (int i = 0; i < r.out.rows; ++i)
-        {
-            const cv::Vec2i p = coords.at<cv::Vec2i>(i, seam.seam[i]);
-            pts[i] = cv::Point(p[0], p[1]);
-        }
-        r.seams.push_back(pts);
-        Greedy::RemoveVerticalSeam(r.out, seam.seam);
-        Greedy::RemoveVerticalSeam(coords, seam.seam);
-    }
+    r.out = greedy ? Greedy::Carve(img, img.cols - k, img.rows, energy, &r.st, true)
+                   : DP::Carve(img, img.cols - k, img.rows, energy, &r.st, true);
     return r;
 }
 
@@ -187,7 +139,7 @@ static void Quality(FILE* f, const std::string& image, const char* energyName, c
     const int top10 = Percentile(e, 90.0);
     int64_t sum = 0, n = 0, high = 0, edge = 0;
     std::vector<char> touched(original.cols, 0);
-    for (const auto& seam : r.seams)
+    for (const auto& seam : r.st.verticalSeams)
         for (const cv::Point& p : seam)
         {
             const int v = e.at<int>(p);
@@ -200,11 +152,11 @@ static void Quality(FILE* f, const std::string& image, const char* energyName, c
     int cols = 0;
     for (char t : touched) cols += t;
     const double mean = double(sum) / n, pct = 100.0 * high / n, pctEdge = 100.0 * edge / n;
-    std::fprintf(f, "%s,%s,%s,%zu,%lld,%.2f,%.2f,%.2f,%d\n", image.c_str(), energyName, method, r.seams.size(),
-                 (long long)r.totalCost, mean, pct, pctEdge, cols);
+    std::fprintf(f, "%s,%s,%s,%zu,%lld,%.2f,%.2f,%.2f,%d\n", image.c_str(), energyName, method, r.st.verticalSeams.size(),
+                 (long long)r.st.totalCost, mean, pct, pctEdge, cols);
     std::printf("  %-9s %-8s %-6s total cost %8lld  mean energy %6.1f  top-10%% %5.1f%%  edge %5.2f%% (%lld px)"
                 "  cols touched %d\n",
-                image.c_str(), energyName, method, (long long)r.totalCost, mean, pct, pctEdge,
+                image.c_str(), energyName, method, (long long)r.st.totalCost, mean, pct, pctEdge,
                 (long long)edge, cols);
 }
 
@@ -240,9 +192,6 @@ static cv::Mat Zoom(const cv::Mat& img, const cv::Rect& roi, int scale)
 
 static void VisualQuality(const cv::Mat& tower, const cv::Mat& synthetic)
 {
-    const Finder greedy = [](const cv::Mat& c) { return Greedy::FindVerticalSeam(c); };
-    const Finder dp = RefDP;
-
     FILE* f = OpenCsv("quality.csv");
     std::fprintf(f, "image,energy,method,seams,total_cost,mean_energy_removed,pct_top10_removed,pct_edge_removed,cols_touched\n");
     std::printf("Visual quality (metrics on the original image's backward energy)\n");
@@ -252,8 +201,8 @@ static void VisualQuality(const cv::Mat& tower, const cv::Mat& synthetic)
         for (DP::EnergyType energy : { DP::EnergyType::Backward, DP::EnergyType::Forward })
         {
             const char* en = energy == DP::EnergyType::Forward ? "forward" : "backward";
-            const Carved g = CarveVertical(job.img, job.k, energy, greedy);
-            const Carved d = CarveVertical(job.img, job.k, energy, dp);
+            const Carved g = CarveVertical(job.img, job.k, energy, true);
+            const Carved d = CarveVertical(job.img, job.k, energy, false);
             Quality(f, job.name, en, "Greedy", job.img, g);
             Quality(f, job.name, en, "DP", job.img, d);
 

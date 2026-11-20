@@ -158,73 +158,26 @@ static void FirstSeamCost(const std::vector<std::pair<std::string, cv::Mat>>& im
 }
 
 // ---------------------------------------------------------------------------
-// 3. Full resize: remove k vertical seams with each method on the same image
+// 3. Full resize: remove k vertical seams with each method on the same image.
+//    Every module's Carve runs the same shared loop (SeamCarving::CarveWith),
+//    so only the seam finder differs between the three runs.
 // ---------------------------------------------------------------------------
-struct CarveResult
-{
-    cv::Mat out;
-    double seamSeconds = 0.0, totalSeconds = 0.0;
-    int64_t totalCost = 0;
-    std::vector<int64_t> seamCosts;
-    std::vector<std::vector<cv::Point>> seams;
-};
+using CarveFn = std::function<cv::Mat(const cv::Mat& img, int k, SeamCarving::CarveStats* st)>;
 
-// Generic carving loop for a SeamFinder (used for the team DP).
-static CarveResult CarveWith(const cv::Mat& img, int k, const SeamFinder& finder)
+static cv::Mat CarveGreedy(const cv::Mat& img, int k, SeamCarving::CarveStats* st)
 {
-    const auto start = std::chrono::steady_clock::now();
-    CarveResult r;
-    r.out = img.clone();
-    cv::Mat coords(img.rows, img.cols, CV_32SC2);
-    for (int y = 0; y < img.rows; ++y)
-        for (int x = 0; x < img.cols; ++x) coords.at<cv::Vec2i>(y, x) = cv::Vec2i(x, y);
-    for (int step = 0; step < k; ++step)
-    {
-        const auto t0 = std::chrono::steady_clock::now();
-        const Seam s = finder(DP::ComputeEnergy(r.out));
-        r.seamSeconds += Seconds(t0);
-        r.totalCost += s.cost;
-        r.seamCosts.push_back(s.cost);
-        std::vector<cv::Point> pts(r.out.rows);
-        for (int i = 0; i < r.out.rows; ++i)
-        {
-            const cv::Vec2i p = coords.at<cv::Vec2i>(i, s.cols[i]);
-            pts[i] = cv::Point(p[0], p[1]);
-        }
-        r.seams.push_back(pts);
-        Greedy::RemoveVerticalSeam(r.out, s.cols);
-        Greedy::RemoveVerticalSeam(coords, s.cols);
-    }
-    r.totalSeconds = Seconds(start);
-    return r;
+    return Greedy::Carve(img, img.cols - k, img.rows, SeamCarving::EnergyType::Backward, st, true);
 }
 
-static CarveResult CarveGreedy(const cv::Mat& img, int k)
+static cv::Mat CarveDP(const cv::Mat& img, int k, SeamCarving::CarveStats* st)
 {
-    Greedy::CarveStats st;
-    CarveResult r;
-    r.out = Greedy::Carve(img, img.cols - k, img.rows, Greedy::EnergyType::Backward, &st, true);
-    r.seamSeconds = st.seamSeconds;
-    r.totalSeconds = st.totalSeconds;
-    r.totalCost = st.totalCost;
-    r.seamCosts = st.seamCosts;
-    r.seams = st.verticalSeams;
-    return r;
+    return DP::Carve(img, img.cols - k, img.rows, SeamCarving::EnergyType::Backward, st, true);
 }
 
-static CarveResult CarveGC(const cv::Mat& img, int k)
+static cv::Mat CarveGC(const cv::Mat& img, int k, SeamCarving::CarveStats* st)
 {
-    const auto start = std::chrono::steady_clock::now();
-    GraphCut::CarveStats st;
-    CarveResult r;
-    r.out = GraphCut::Carve(img, img.cols - k, img.rows, GraphCut::MaxFlowAlgorithm::Dinic,
-                            GraphCut::EnergyType::Backward, &st, true);
-    r.seamSeconds = st.seamSeconds;
-    r.totalSeconds = Seconds(start);
-    r.totalCost = st.totalCost;
-    r.seamCosts = st.seamCosts;
-    r.seams = st.verticalSeams;
-    return r;
+    return GraphCut::Carve(img, img.cols - k, img.rows, GraphCut::MaxFlowAlgorithm::Dinic,
+                           SeamCarving::EnergyType::Backward, st, true);
 }
 
 static cv::Mat Label(const cv::Mat& img, const std::string& text)
@@ -252,29 +205,30 @@ static cv::Mat SideBySide(const std::vector<cv::Mat>& images, int gap = 8)
 
 static void FullResize(const std::string& name, const cv::Mat& img, int k, FILE* csv, FILE* perSeam)
 {
-    struct M { const char* name; std::function<CarveResult()> run; };
+    struct M { const char* name; CarveFn carve; };
     const std::vector<M> methods = {
-        { "Greedy", [&] { return CarveGreedy(img, k); } },
-        { "DP", [&] { return CarveWith(img, k, TeamDP); } },
-        { "GC Dinic", [&] { return CarveGC(img, k); } },
+        { "Greedy", CarveGreedy },
+        { "DP", CarveDP },
+        { "GC Dinic", CarveGC },
     };
     std::vector<cv::Mat> results{ Label(img, "original") }, overlays;
     std::vector<std::vector<std::vector<cv::Point>>> allSeams;
     for (const M& m : methods)
     {
-        const CarveResult r = m.run();
+        SeamCarving::CarveStats r;
+        const cv::Mat out = m.carve(img, k, &r);
         std::fprintf(csv, "%s,%s,%dx%d,%d,%.6f,%.6f,%lld\n", name.c_str(), m.name, img.cols, img.rows, k,
                      r.seamSeconds, r.totalSeconds, (long long)r.totalCost);
         for (size_t s = 0; s < r.seamCosts.size(); ++s)
             std::fprintf(perSeam, "%s,%s,%zu,%lld\n", name.c_str(), m.name, s + 1, (long long)r.seamCosts[s]);
         std::printf("  %-10s %-9s %d seams: %9.4f s finding seams, %9.4f s total, total cost=%lld\n",
                     name.c_str(), m.name, k, r.seamSeconds, r.totalSeconds, (long long)r.totalCost);
-        results.push_back(Label(r.out, m.name));
+        results.push_back(Label(out, m.name));
         cv::Mat vis = img.clone();
-        for (const auto& seam : r.seams)
+        for (const auto& seam : r.verticalSeams)
             for (const cv::Point& p : seam) vis.at<cv::Vec3b>(p) = cv::Vec3b(0, 0, 255);
         overlays.push_back(Label(vis, std::string(m.name) + ": all " + std::to_string(k) + " seams"));
-        allSeams.push_back(r.seams);
+        allSeams.push_back(r.verticalSeams);
     }
     cv::imwrite(OUT + "compare_" + name + ".png", SideBySide(results));
     cv::imwrite(OUT + "seams_" + name + ".png", SideBySide(overlays));

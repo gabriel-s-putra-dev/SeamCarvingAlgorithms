@@ -143,42 +143,34 @@ static bool AskOptions(Options& o, cv::Mat& img)
     return true;
 }
 
+// All three methods fill the same SeamCarving::CarveStats, so only the call
+// that chooses the seam finder differs.
 static RunResult Run(const cv::Mat& img, const Options& o)
 {
+    using SeamCarving::EnergyType;
+    const EnergyType energy = o.forward ? EnergyType::Forward : EnergyType::Backward;
+    SeamCarving::CarveStats st;
     RunResult r;
-    if (o.algorithm == Algorithm::DP)
+    switch (o.algorithm)
     {
-        DP::CarveStats st;
-        r.resized = DP::Carve(img, o.newWidth, o.newHeight,
-                              o.forward ? DP::EnergyType::Forward : DP::EnergyType::Backward, &st, true);
-        r.seams = DP::DrawSeams(img, st);
-        r.totalCost = st.totalCost;
-        r.seamsRemoved = st.seamCosts.size();
-        r.seamSeconds = st.seamSeconds;
-    }
-    else if (o.algorithm == Algorithm::Greedy)
-    {
-        Greedy::CarveStats st;
-        r.resized = Greedy::Carve(img, o.newWidth, o.newHeight,
-                                  o.forward ? Greedy::EnergyType::Forward : Greedy::EnergyType::Backward, &st, true);
-        r.seams = Greedy::DrawSeams(img, st);
-        r.totalCost = static_cast<long long>(st.totalCost);
-        r.seamsRemoved = st.seamCosts.size();
-        r.seamSeconds = st.seamSeconds;
-    }
-    else
-    {
-        GraphCut::CarveStats st;
+    case Algorithm::DP:
+        r.resized = DP::Carve(img, o.newWidth, o.newHeight, energy, &st, true);
+        break;
+    case Algorithm::Greedy:
+        r.resized = Greedy::Carve(img, o.newWidth, o.newHeight, energy, &st, true);
+        break;
+    case Algorithm::GraphCutDinic:
+    case Algorithm::GraphCutEdmondsKarp:
         r.resized = GraphCut::Carve(img, o.newWidth, o.newHeight,
                                     o.algorithm == Algorithm::GraphCutDinic ? GraphCut::MaxFlowAlgorithm::Dinic
                                                                             : GraphCut::MaxFlowAlgorithm::EdmondsKarp,
-                                    o.forward ? GraphCut::EnergyType::Forward : GraphCut::EnergyType::Backward,
-                                    &st, true);
-        r.seams = GraphCut::DrawSeams(img, st);
-        r.totalCost = static_cast<long long>(st.totalCost);
-        r.seamsRemoved = st.seamCosts.size();
-        r.seamSeconds = st.seamSeconds;
+                                    energy, &st, true);
+        break;
     }
+    r.seams = SeamCarving::DrawSeams(img, st);
+    r.totalCost = static_cast<long long>(st.totalCost);
+    r.seamsRemoved = st.seamCosts.size();
+    r.seamSeconds = st.seamSeconds;
     return r;
 }
 
