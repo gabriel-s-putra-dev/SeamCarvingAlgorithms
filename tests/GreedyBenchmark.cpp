@@ -1,7 +1,7 @@
 /*!************************************************************************
 \file GreedyBenchmark.cpp
 \author Ethan Ng Yong Le, Xiong Yang
-\par DP email: 2400557@sit.singaporetech.edu.sg, xiong.yang@digipen.edu
+\par DP email: 2400557@sit.singaporetech.edu.sg, 2400647@sit.singaporetech.edu.sg
 \par Course: csd3131
 \par Algorithm Analysis
 \date 20-11-2026

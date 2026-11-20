@@ -1,7 +1,7 @@
 /*!************************************************************************
 \file GreedyTests.cpp
 \author XIONG YANG
-\par DP email: xiong.yang@digipen.edu
+\par DP email: 2400647@sit.singaporetech.edu.sg
 \par Course: csd3131
 \par Algorithm Analysis
 \date 20-11-2026
