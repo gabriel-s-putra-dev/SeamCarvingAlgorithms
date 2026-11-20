@@ -1,7 +1,7 @@
 /*!************************************************************************
 \file SeamCarving.cpp
 \author Gabriel Sebastian Putra
-\par DP email: gabrielsebastian.p@digipen.edu
+\par DP email: 2400735@sit.singaporetech.edu.sg
 \par Course: csd3131
 \par Algorithm Analysis
 \date 20-11-2026

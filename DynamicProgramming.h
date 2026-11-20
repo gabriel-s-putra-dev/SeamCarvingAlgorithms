@@ -1,7 +1,7 @@
 /*!************************************************************************
 \file DynamicProgramming.h
 \author Gabriel Sebastian Putra, Ho Jun
-\par DP email: gabrielsebastian.p@digipen.edu, 2401700@sit.singaporetech.edu.sg
+\par DP email: 2400735@sit.singaporetech.edu.sg, 2401700@sit.singaporetech.edu.sg
 \par Course: csd3131
 \par Algorithm Analysis
 \date 20-11-2026
